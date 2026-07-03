@@ -1,0 +1,143 @@
+#!/bin/bash
+# Mock glab binary for smoke tests. Emits canned GitLab REST API JSON.
+set -e
+
+args="$*"
+
+issue_detail() {
+  cat <<'EOF'
+{
+  "id": 1001, "iid": 42, "title": "Login button unresponsive on Safari",
+  "description": "Steps to reproduce:\r\n\n1. Open Safari\n2. Click login\n\nNothing happens.",
+  "state": "opened",
+  "labels": ["bug", "frontend"],
+  "author": {"id": 7, "username": "jdoe", "name": "Jane Doe"},
+  "assignees": [{"id": 8, "username": "asmith", "name": "Alex Smith"}],
+  "milestone": {"id": 3, "title": "v2.1"},
+  "created_at": "2026-06-01T10:30:45.123Z",
+  "updated_at": "2026-06-20T08:15:00.000+02:00",
+  "closed_at": null,
+  "web_url": "https://gitlab.example.com/group/sub/proj/-/issues/42",
+  "references": {"full": "group/sub/proj#42"},
+  "user_notes_count": 2
+}
+EOF
+}
+
+mr_detail() {
+  cat <<'EOF'
+{
+  "id": 2001, "iid": 7, "title": "Draft: Add rate limiting to API",
+  "description": "Implements token bucket rate limiting.",
+  "state": "opened",
+  "draft": true,
+  "labels": ["backend"],
+  "author": {"id": 7, "username": "jdoe", "name": "Jane Doe"},
+  "assignees": [],
+  "source_branch": "feat/rate-limit",
+  "target_branch": "main",
+  "detailed_merge_status": "mergeable",
+  "has_conflicts": false,
+  "sha": "abc123def456",
+  "diff_refs": {"base_sha": "base111", "head_sha": "head222", "start_sha": "start333"},
+  "head_pipeline": {"id": 55, "status": "running", "web_url": "https://gitlab.example.com/group/sub/proj/-/pipelines/55"},
+  "changes_count": "3",
+  "created_at": "2026-06-10T12:00:00Z",
+  "updated_at": "2026-06-25T09:00:00Z",
+  "web_url": "https://gitlab.example.com/group/sub/proj/-/merge_requests/7"
+}
+EOF
+}
+
+case "$args" in
+  "issue list"*)
+    echo "["; issue_detail; echo "]"
+    ;;
+  "mr list"*)
+    echo "["; mr_detail; echo "]"
+    ;;
+  "mr view --output json"*)
+    mr_detail
+    ;;
+  "mr diff"*)
+    cat <<'EOF'
+diff --git a/src/limiter.lua b/src/limiter.lua
+index 111..222 100644
+--- a/src/limiter.lua
++++ b/src/limiter.lua
+@@ -1,3 +1,4 @@
+ local M = {}
++M.rate = 100
+ return M
+EOF
+    ;;
+  "api user"*)
+    echo '{"id": 7, "username": "jdoe", "name": "Jane Doe"}'
+    ;;
+  *"/issues/42/discussions"*)
+    cat <<'EOF'
+[
+  {"id": "disc1", "individual_note": true, "notes": [
+    {"id": 501, "body": "Reproduced on Safari 17.", "system": false,
+     "author": {"id": 9, "username": "asmith"}, "created_at": "2026-06-02T09:00:00Z"}
+  ]},
+  {"id": "disc2", "individual_note": false, "notes": [
+    {"id": 502, "body": "Fix incoming.", "system": false,
+     "author": {"id": 7, "username": "jdoe"}, "created_at": "2026-06-03T10:00:00Z"},
+    {"id": 503, "body": "Thanks!", "system": false,
+     "author": {"id": 9, "username": "asmith"}, "created_at": "2026-06-03T11:00:00Z"}
+  ]},
+  {"id": "disc3", "individual_note": true, "notes": [
+    {"id": 504, "body": "changed the description", "system": true,
+     "author": {"id": 1, "username": "bot"}, "created_at": "2026-06-04T10:00:00Z"}
+  ]}
+]
+EOF
+    ;;
+  *"/issues/42/award_emoji"*)
+    cat <<'EOF'
+[
+  {"id": 601, "name": "thumbsup", "user": {"id": 9, "username": "asmith"}},
+  {"id": 602, "name": "thumbsup", "user": {"id": 10, "username": "mlee"}},
+  {"id": 603, "name": "rocket", "user": {"id": 7, "username": "jdoe"}}
+]
+EOF
+    ;;
+  *"/issues/42"*)
+    issue_detail
+    ;;
+  *"/merge_requests/7/discussions"*)
+    cat <<'EOF'
+[
+  {"id": "mrdisc1", "individual_note": false, "notes": [
+    {"id": 701, "body": "Should this be configurable?", "system": false, "resolvable": true, "resolved": true,
+     "author": {"id": 9, "username": "asmith"}, "created_at": "2026-06-11T09:00:00Z",
+     "position": {"position_type": "text", "base_sha": "base111", "head_sha": "head222", "start_sha": "start333",
+                  "new_path": "src/limiter.lua", "old_path": "src/limiter.lua", "new_line": 2}}
+  ]}
+]
+EOF
+    ;;
+  *"/merge_requests/7/award_emoji"*)
+    echo "[]"
+    ;;
+  *"/merge_requests/7/approvals"*)
+    echo '{"approved_by": [{"user": {"id": 9, "username": "asmith"}}]}'
+    ;;
+  *"/merge_requests/7"*)
+    mr_detail
+    ;;
+  *"/labels"*)
+    cat <<'EOF'
+[
+  {"id": 1, "name": "bug", "color": "#dd2b0e", "description": "Something broken"},
+  {"id": 2, "name": "frontend", "color": "#1f75cb", "description": null},
+  {"id": 3, "name": "backend", "color": "#108548", "description": null}
+]
+EOF
+    ;;
+  *)
+    echo "mock glab: unhandled args: $args" >&2
+    exit 64
+    ;;
+esac
