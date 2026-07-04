@@ -472,7 +472,18 @@ function M.pipeline(opts, ctx)
     local pipelines
     Api.pipelines(function(data)
       pipelines = data or {}
-    end, opts):wait()
+    end, {
+      repo = opts.repo,
+      mr = opts.mr,
+      limit = opts.limit,
+      status = opts.status,
+      ref = opts.ref,
+      source = opts.source,
+      username = opts.username,
+      scope = opts.scope,
+      sha = opts.sha,
+      notify = opts.notify,
+    }):wait()
     for _, p in ipairs(pipelines or {}) do
       cb(M.pipeline_item(p, opts))
     end
