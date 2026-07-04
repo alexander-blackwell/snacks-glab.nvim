@@ -33,7 +33,8 @@ mr_detail() {
   "draft": true,
   "labels": ["backend"],
   "author": {"id": 7, "username": "jdoe", "name": "Jane Doe"},
-  "assignees": [],
+  "assignees": [{"id": 9, "username": "asmith", "name": "Alex Smith"}],
+  "reviewers": [{"id": 10, "username": "mlee", "name": "Morgan Lee"}],
   "source_branch": "feat/rate-limit",
   "target_branch": "main",
   "detailed_merge_status": "mergeable",
@@ -42,6 +43,7 @@ mr_detail() {
   "diff_refs": {"base_sha": "base111", "head_sha": "head222", "start_sha": "start333"},
   "head_pipeline": {"id": 55, "status": "running", "web_url": "https://gitlab.example.com/group/sub/proj/-/pipelines/55"},
   "changes_count": "3",
+  "merge_when_pipeline_succeeds": true,
   "created_at": "2026-06-10T12:00:00Z",
   "updated_at": "2026-06-25T09:00:00Z",
   "web_url": "https://gitlab.example.com/group/sub/proj/-/merge_requests/7"
@@ -55,6 +57,16 @@ case "$args" in
     ;;
   "mr list"*)
     echo "["; mr_detail; echo "]"
+    ;;
+  "mr create"*)
+    echo "https://gitlab.example.com/group/sub/proj/-/merge_requests/8"
+    ;;
+  "ci artifact"*)
+    echo "Downloaded artifacts"
+    ;;
+  "ci lint"*)
+    echo "Validating...
+✓ CI/CD YAML is valid!"
     ;;
   "mr view --output json"*)
     mr_detail
@@ -190,11 +202,24 @@ EOF
     cat <<'EOF'
 [
   {"id": 901, "name": "build", "stage": "build", "status": "success", "allow_failure": false, "duration": 83.2,
+   "ref": "feat/rate-limit", "artifacts_file": {"filename": "artifacts.zip", "size": 2048},
    "created_at": "2026-06-25T08:00:10Z", "web_url": "https://gitlab.example.com/group/sub/proj/-/jobs/901"},
   {"id": 902, "name": "test", "stage": "test", "status": "failed", "allow_failure": false, "duration": 45.7,
    "created_at": "2026-06-25T08:02:00Z", "web_url": "https://gitlab.example.com/group/sub/proj/-/jobs/902"},
   {"id": 903, "name": "deploy", "stage": "deploy", "status": "manual", "allow_failure": false,
    "created_at": "2026-06-25T08:05:00Z", "web_url": "https://gitlab.example.com/group/sub/proj/-/jobs/903"}
+]
+EOF
+    ;;
+  *"/cancel_merge_when_pipeline_succeeds"*)
+    echo '{"iid": 7}'
+    ;;
+  *"/members/all"*)
+    cat <<'EOF'
+[
+  {"id": 7, "username": "jdoe", "name": "Jane Doe"},
+  {"id": 9, "username": "asmith", "name": "Alex Smith"},
+  {"id": 10, "username": "mlee", "name": "Morgan Lee"}
 ]
 EOF
     ;;

@@ -89,6 +89,8 @@
 ---@field created_at string
 ---@field web_url? string
 ---@field pipeline? snacks.glab.Pipeline
+---@field ref? string
+---@field artifacts_file? {filename: string, size: number} present when the job has a downloadable archive
 
 ---@class snacks.glab.Pipeline
 ---@field id number
@@ -187,6 +189,8 @@
 ---@field draft_notes? snacks.glab.DraftNote[] the current user's pending review comments (MR only)
 ---@field diffs? snacks.glab.FileDiff[] file diffs used to render hunks under positioned notes (MR only)
 ---@field checks_jobs? snacks.glab.Job[] jobs of the latest MR pipeline (MR only)
+---@field reviewers? snacks.glab.User[]
+---@field merge_when_pipeline_succeeds? boolean auto-merge scheduled
 
 --- Normalized picker item wrapping a snacks.glab.Item
 ---@class snacks.picker.glab.Item: snacks.picker.Item,snacks.glab.Item

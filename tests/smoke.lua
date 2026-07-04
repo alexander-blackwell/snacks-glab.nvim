@@ -281,6 +281,46 @@ try("mr palette offers review actions", function()
   return true
 end)
 
+try("extras: artifacts, auto-merge, assignment, create, lint", function()
+  local Actions = require("snacks.glab.actions")
+  -- users source registered
+  assert(require("snacks.picker.config.sources").glab_users, "glab_users source")
+  -- module fns
+  assert(type(Actions.create_mr) == "function" and type(Snacks.glab.create_mr) == "function", "create_mr")
+  assert(type(Actions.ci_lint) == "function" and type(Snacks.glab.ci_lint) == "function", "ci_lint")
+  -- mr palette: cancel auto-merge (merge_when_pipeline_succeeds=true), assignment, reviewers
+  local mr_actions = Actions.get_actions(mr_item, { items = { mr_item } })
+  assert(mr_actions.glab_cancel_auto_merge, "cancel auto-merge enabled")
+  assert(mr_actions.glab_assign and mr_actions.glab_assign_me and mr_actions.glab_reviewers, "assignment actions")
+  -- issue palette: assignment yes, reviewers no
+  local issue_actions = Actions.get_actions(issue_item, { items = { issue_item } })
+  assert(issue_actions.glab_assign and issue_actions.glab_assign_me, "issue assignment")
+  assert(not issue_actions.glab_reviewers, "reviewers are mr-only")
+  assert(not issue_actions.glab_cancel_auto_merge, "auto-merge is mr-only")
+  return true
+end)
+
+try("job artifacts gated on artifacts_file", function()
+  local Actions = require("snacks.glab.actions")
+  assert(job_items == nil or true, "ordering") -- job_items defined later; use fresh fetch
+  local jobs
+  Api.jobs(function(data)
+    jobs = data or {}
+  end, { repo = "group/sub/proj", pipeline = 55 })
+  assert(wait_for(function()
+    return jobs ~= nil
+  end), "timeout")
+  local Src = require("snacks.picker.source.glab")
+  local build = Src.job_item(jobs[1], { repo = "group/sub/proj", pipeline = 55 })
+  local test_job = Src.job_item(jobs[2], { repo = "group/sub/proj", pipeline = 55 })
+  assert(build.ref == "feat/rate-limit", "job ref shaped")
+  local a = Actions.get_actions(build, { items = { build } })
+  assert(a.glab_job_artifacts, "artifacts enabled for build job")
+  local b = Actions.get_actions(test_job, { items = { test_job } })
+  assert(not b.glab_job_artifacts, "artifacts disabled without artifacts_file")
+  return true
+end)
+
 try("comment_diff slices the hunk", function()
   local Render = require("snacks.glab.render")
   local ctx = { item = mr_item, opts = require("snacks.glab").config() }

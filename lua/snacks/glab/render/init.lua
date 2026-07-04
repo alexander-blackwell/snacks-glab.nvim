@@ -143,7 +143,12 @@ M.props = {
       local status = merge_status(detailed)
       local icon = opts.icons.merge_status[status]
       local hl = "SnacksGlabMr" .. U.title(status)
-      return { { icon .. " " .. detailed:gsub("_", " "), hl } }
+      local ret = { { icon .. " " .. detailed:gsub("_", " "), hl } } ---@type snacks.picker.Highlight[]
+      if item.item.merge_when_pipeline_succeeds then
+        ret[#ret + 1] = { " " }
+        H.extend(ret, H.badge("auto-merge", "SnacksGlabPendingBadge"))
+      end
+      return ret
     end,
   },
   {

@@ -178,6 +178,20 @@ local function register()
       },
     },
   }
+
+  ---@class snacks.picker.glab.users.Config: snacks.picker.Config
+  ---@field iid number issue or MR iid
+  ---@field repo string GitLab project
+  ---@field type "issue" | "mr"
+  ---@field field "assignee_ids" | "reviewer_ids"
+  sources.glab_users = {
+    layout = { preset = "select", layout = { max_width = 60 } },
+    title = "󰮠  Users",
+    main = { current = true },
+    group = true,
+    finder = "glab_users",
+    format = "glab_format_user",
+  }
 end
 
 register()

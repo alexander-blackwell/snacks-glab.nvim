@@ -199,6 +199,18 @@ function M.create_issue(opts)
   return require("snacks.glab.actions").create_issue(opts)
 end
 
+--- Create a merge request from the current branch (Title frontmatter + description scratch buffer)
+---@param opts? { repo?: string }
+function M.create_mr(opts)
+  return require("snacks.glab.actions").create_mr(opts)
+end
+
+--- Validate the repo's .gitlab-ci.yml
+---@param opts? { repo?: string }
+function M.ci_lint(opts)
+  return require("snacks.glab.actions").ci_lint(opts)
+end
+
 --- Open an issue or MR in a glab:// buffer.
 --- `repo` defaults to the origin remote of the cwd (subgroups supported).
 ---@param opts {type: "issue"|"mr", iid: number, repo?: string}

@@ -171,3 +171,9 @@ nvim --headless --clean -c "luafile tests/smoke.lua"
    inline hunks under positioned comments (client-side slicing from `/diffs`),
    per-job pipeline breakdown in MR buffers, resolve/unresolve threads, and
    `Snacks.glab.create_issue()`.
+7. glab-capability extras: job artifact downloads (`glab ci artifact <ref> <name>`,
+   gated on `artifacts_file`), cancel auto-merge (+ badge in Merge Status prop),
+   assignee/reviewer management (`glab_users` picker over `/members/all`,
+   `assignee_ids`/`reviewer_ids` PUT with `{0}` to clear, `glab_assign_me` toggle),
+   `Snacks.glab.create_mr()` (`mr create -y`, current branch -> default branch),
+   and `Snacks.glab.ci_lint()`.

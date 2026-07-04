@@ -383,6 +383,68 @@ function M.format_action(item, picker)
   return ret
 end
 
+--- Project members, marked with whether they're currently in `opts.field`
+--- (assignee_ids or reviewer_ids) of the given issue/MR.
+---@param opts snacks.picker.glab.users.Config
+---@type snacks.picker.finder
+function M.users(opts, ctx)
+  if not opts.repo then
+    Snacks.notify.error("snacks.picker.glab.users: `opts.repo` is required")
+    return {}
+  end
+  ---@async
+  return function(cb)
+    ---@type snacks.glab.User[]?
+    local members = Api.request_sync({
+      endpoint = "projects/{project}/members/all?per_page=100",
+      repo = opts.repo,
+    })
+    local item = Api.get_cached({ type = opts.type, repo = opts.repo, iid = opts.iid })
+    local current = {} ---@type table<number, boolean>
+    if item and item.item then
+      local users = opts.field == "reviewer_ids" and item.item.reviewers or item.item.assignees
+      for _, u in ipairs(users or {}) do
+        current[u.id] = true
+      end
+    end
+    members = members or {}
+    table.sort(members, function(a, b)
+      if current[a.id] ~= current[b.id] then
+        return current[a.id] == true
+      end
+      return (a.username or ""):lower() < (b.username or ""):lower()
+    end)
+    for _, member in ipairs(members) do
+      cb({
+        text = (member.username or "") .. " " .. (member.name or ""),
+        user = member,
+        id = member.id,
+        username = member.username,
+        added = current[member.id] == true,
+      })
+    end
+  end
+end
+
+---@type snacks.picker.format
+function M.format_user(item, picker)
+  local ret = {} ---@type snacks.picker.Highlight[]
+  local config = require("snacks.glab").config()
+  local added = item.added
+  if picker.list:is_selected(item) then
+    added = not added -- reflect the change that will happen on action
+  end
+  ret[#ret + 1] = { added and "󰱒 " or "󰄱 ", "SnacksPickerDelim" }
+  ret[#ret + 1] = { " " }
+  ret[#ret + 1] = { config.icons.user .. " " }
+  ret[#ret + 1] = { "@" .. (item.username or "?"), "SnacksPickerGitAuthor" }
+  if item.user and item.user.name then
+    ret[#ret + 1] = { " " }
+    ret[#ret + 1] = { item.user.name, "SnacksPickerDimmed" }
+  end
+  return ret
+end
+
 ---@type snacks.picker.format
 function M.format_reaction(item, picker)
   local config = require("snacks.glab").config()
@@ -455,6 +517,7 @@ function M.job_item(j, opts)
     status = j.status,
     allow_failure = j.allow_failure,
     duration = j.duration,
+    ref = j.ref or (j.pipeline and j.pipeline.ref) or nil,
     web_url = j.web_url,
     repo = opts.repo or (j.web_url and Item.get_repo(j.web_url)) or nil,
     created = Item.ts(j.created_at),

@@ -653,6 +653,128 @@ end
 M.actions.glab_resolve = resolve_action(true)
 M.actions.glab_unresolve = resolve_action(false)
 
+M.actions.glab_job_artifacts = {
+  desc = "Download artifacts",
+  title = "Download artifacts of job {name}",
+  icon = config.icons.file,
+  type = "job",
+  enabled = function(item)
+    return item.job ~= nil and item.job.artifacts_file ~= nil
+  end,
+  action = function(item, ctx)
+    if not item.ref then
+      Snacks.notify.error("Job has no ref; cannot download artifacts")
+      return
+    end
+    local dest = ("artifacts-%s-%s/"):format(item.name, tostring(item.id))
+    Api.cmd(function()
+      vim.schedule(function()
+        Snacks.notify.info(("Downloaded artifacts of %s to %s"):format(item.name, vim.fn.fnamemodify(dest, ":p")))
+      end)
+    end, {
+      args = { "ci", "artifact", item.ref, item.name, "-p", dest },
+      repo = item.repo,
+    })
+  end,
+}
+
+M.actions.glab_cancel_auto_merge = {
+  desc = "Cancel auto-merge",
+  title = "Cancel auto-merge of {type} {hash}",
+  icon = config.icons.crossmark,
+  type = "mr",
+  enabled = function(item)
+    return item.item and item.item.merge_when_pipeline_succeeds == true
+  end,
+  action = function(item, ctx)
+    M.cli(item, {
+      api = {
+        endpoint = "projects/{project}/merge_requests/{iid}/cancel_merge_when_pipeline_succeeds",
+        method = "POST",
+      },
+      success = "Canceled auto-merge of {type} {hash}",
+    }, ctx)
+  end,
+}
+
+M.actions.glab_assign_me = {
+  desc = "Assign/unassign me",
+  title = "Toggle my assignment on {type} {hash}",
+  icon = config.icons.user,
+  action = function(item, ctx)
+    Api.request(function(_, me)
+      if not (me and me.id) then
+        return
+      end
+      vim.schedule(function()
+        local ids = {} ---@type number[]
+        local had_me = false
+        for _, u in ipairs(item.item.assignees or {}) do
+          if u.id == me.id then
+            had_me = true
+          else
+            ids[#ids + 1] = u.id
+          end
+        end
+        if not had_me then
+          ids[#ids + 1] = me.id
+        end
+        M.cli(item, {
+          api = {
+            endpoint = "projects/{project}/{collection}/{iid}",
+            method = "PUT",
+            input = { assignee_ids = #ids > 0 and ids or { 0 } },
+          },
+          success = (had_me and "Unassigned you from" or "Assigned you to") .. " {type} {hash}",
+        }, ctx)
+      end)
+    end, { endpoint = "user" })
+  end,
+}
+
+---@param field "assignee_ids"|"reviewer_ids"
+local function user_picker_action(field)
+  local what = field == "reviewer_ids" and "reviewers" or "assignees"
+  ---@type snacks.glab.Action
+  return {
+    desc = "Add/Remove " .. what,
+    icon = config.icons.user,
+    type = field == "reviewer_ids" and "mr" or nil,
+    action = function(item, ctx)
+      Snacks.picker.pick("glab_users", {
+        iid = item.iid,
+        repo = item.repo,
+        type = item.type,
+        field = field,
+        title = "󰮠  " .. what:sub(1, 1):upper() .. what:sub(2),
+        confirm = function(picker)
+          local ids = {} ---@type table<number, boolean>
+          local users = field == "reviewer_ids" and item.item.reviewers or item.item.assignees
+          for _, u in ipairs(users or {}) do
+            ids[u.id] = true
+          end
+          for _, it in ipairs(picker:selected({ fallback = true })) do
+            ids[it.id] = not it.added or nil
+          end
+          local list = vim.tbl_keys(ids)
+          M.cli(item, {
+            api = {
+              endpoint = "projects/{project}/{collection}/{iid}",
+              method = "PUT",
+              input = { [field] = #list > 0 and list or { 0 } },
+            },
+            success = "Updated " .. what .. " of {type} {hash}",
+          }, ctx)
+          picker:close()
+        end,
+      })
+    end,
+  }
+end
+
+M.actions.glab_assign = user_picker_action("assignee_ids")
+M.actions.glab_reviewers = user_picker_action("reviewer_ids")
+
 --- REST collection name for a type
 ---@param type "issue" | "mr"
 function M.rest(type)
@@ -919,6 +1041,51 @@ function M.create_issue(opts)
     },
   }
   return M.edit(cli_ctx)
+end
+
+--- Create a merge request from the current branch via a scratch buffer.
+--- Source defaults to the current branch, target to the project default branch.
+--- Prefix the title with `Draft: ` to open it as a draft.
+---@param opts? { repo?: string }
+function M.create_mr(opts)
+  opts = opts or {}
+  ---@type snacks.glab.cli.Action.ctx
+  local cli_ctx = {
+    item = { type = "mr", iid = "", hash = "new MR", repo = opts.repo, title = "", body = "" },
+    args = { "mr", "create", "-y" },
+    opts = {
+      title = "Create merge request from the current branch",
+      success = "Created merge request",
+      icon = config.icons.mr.open,
+      edit = "description",
+      fields = {
+        { arg = "title", prop = "title", name = "Title" },
+      },
+      template = "",
+      repo = opts.repo,
+    },
+  }
+  return M.edit(cli_ctx)
+end
+
+--- Validate the repo's .gitlab-ci.yml with `glab ci lint`
+---@param opts? { repo?: string }
+function M.ci_lint(opts)
+  opts = opts or {}
+  Api.cmd(function(proc, data)
+    vim.schedule(function()
+      Snacks.notify.info(vim.trim(data or "CI/CD YAML is valid"), { title = "glab ci lint" })
+    end)
+  end, {
+    args = { "ci", "lint" },
+    repo = opts.repo,
+    on_error = function(_, err)
+      vim.schedule(function()
+        Snacks.notify.error(vim.trim(err or "lint failed"), { title = "glab ci lint" })
+      end)
+    end,
+    notify = false,
+  })
 end
 
 ---@param str string

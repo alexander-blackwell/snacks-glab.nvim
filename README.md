@@ -103,8 +103,12 @@ Snacks.picker.glab_pipeline({ status = "failed", ref = "main" })
 -- Jobs of a pipeline
 Snacks.picker.glab_job({ pipeline = 4567 })
 
--- Create a new issue (Title frontmatter + description scratch buffer)
+-- Create a new issue / MR (Title frontmatter + description scratch buffer)
 Snacks.glab.create_issue()
+Snacks.glab.create_mr() -- from the current branch; prefix the title with "Draft: " for a draft
+
+-- Validate .gitlab-ci.yml
+Snacks.glab.ci_lint()
 
 -- Open issue/MR in a buffer (repo defaults to the current origin remote)
 Snacks.glab.open({ type = "issue", iid = 42, repo = "group/subgroup/project" })
@@ -142,6 +146,10 @@ When viewing an issue or MR in the picker, press `<cr>` to show available action
   [suggestions](https://docs.gitlab.com/ee/user/project/merge_requests/reviews/suggestions.html)
   pre-filled from visual selections; positioned comments render their code hunk
   inline in the MR buffer
+- **Cancel auto-merge** — when merge-when-pipeline-succeeds is scheduled
+  (shown as an `auto-merge` badge in the buffer)
+- **Add/Remove assignees · reviewers** — project-member picker; **Assign/unassign me**
+  toggles yourself (assignees work on issues too, reviewers are MR-only)
 
 **Pipelines & Jobs:**
 
@@ -154,7 +162,8 @@ on any MR), press `<cr>` for actions:
 - **Open in browser / Yank URL**
 
 Jobs get their own actions: **View log** (rendered in a split, ANSI-clean),
-**Retry**, **Cancel**, and **Run manual job** for `when: manual` jobs.
+**Retry**, **Cancel**, **Run manual job** for `when: manual` jobs, and
+**Download artifacts** (via `glab ci artifact`, into `./artifacts-<job>-<id>/`).
 
 ### GitLab Buffers
 
