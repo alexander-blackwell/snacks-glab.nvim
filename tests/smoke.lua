@@ -247,6 +247,38 @@ try("mr diff annotations", function()
   return true
 end)
 
+-- 10. icon consistency: every palette action carries a real glyph
+try("all palette actions have icons", function()
+  local Actions = require("snacks.glab.actions")
+  local skip = { glab_actions = true, glab_perform_action = true }
+  for _, it in ipairs({ issue_item, mr_item }) do
+    local actions = Actions.get_actions(it, { items = { it } })
+    for name, action in pairs(actions) do
+      if not skip[name] then
+        local icon = action.icon
+        assert(type(icon) == "string" and icon:gsub("%s", "") ~= "", "blank icon for " .. name)
+      end
+    end
+  end
+  return true
+end)
+
+try("no blank icons in config", function()
+  local icons = require("snacks.glab").config().icons
+  local function walk(tbl, path)
+    for k, v in pairs(tbl) do
+      local p = path .. "." .. k
+      if type(v) == "table" then
+        walk(v, p)
+      else
+        assert(type(v) == "string" and v:gsub("%s", "") ~= "", "blank icon at " .. p)
+      end
+    end
+  end
+  walk(icons, "icons")
+  return true
+end)
+
 print(("\n%d passed, %d failed"):format(passed, #failed))
 if #failed > 0 then
   print("failed: " .. table.concat(failed, ", "))

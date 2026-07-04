@@ -364,10 +364,8 @@ end
 function M.format_action(item, picker)
   local ret = {} ---@type snacks.picker.Highlight[]
 
-  if item.action.icon then
-    ret[#ret + 1] = { item.action.icon, "Special" }
-    ret[#ret + 1] = { " " }
-  end
+  -- fixed-width icon column so rows align even when an action has no icon
+  ret[#ret + 1] = { Snacks.picker.util.align(item.action.icon or "", 3), "Special" }
 
   local count = picker:count()
   local idx = tostring(item.idx)

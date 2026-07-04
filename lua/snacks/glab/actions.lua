@@ -77,7 +77,7 @@ M.actions = setmetatable({}, {
 
 M.actions.glab_diff = {
   desc = "View MR diff",
-  icon = " ",
+  icon = " ",
   priority = 100,
   type = "mr",
   title = "View diff for MR !{iid}",
@@ -95,7 +95,7 @@ M.actions.glab_diff = {
 
 M.actions.glab_open = {
   desc = "Open in buffer",
-  icon = " ",
+  icon = " ",
   priority = 100,
   title = "Open {type} {hash} in buffer",
   action = function(item, ctx)
@@ -178,7 +178,7 @@ M.actions.glab_browse = {
 
 M.actions.glab_react = {
   desc = "Add reaction",
-  icon = " ",
+  icon = " ",
   action = function(item, ctx)
     local reactions = { "thumbsup", "thumbsdown", "laughing", "tada", "confused", "heart", "rocket", "eyes" }
     Snacks.picker.pick("glab_reactions", {
@@ -254,7 +254,7 @@ M.actions.glab_label = {
 
 M.actions.glab_yank = {
   desc = "Yank URL(s) to clipboard",
-  icon = " ",
+  icon = " ",
   action = function(_, ctx)
     if vim.fn.mode():find("^[vV]") and ctx.picker then
       ctx.picker.list:select()
@@ -276,7 +276,7 @@ M.actions.glab_reply_to_comment = {
   desc = "Reply to comment",
   title = "Reply to comment on {type} {hash}",
   priority = 150,
-  icon = " ",
+  icon = " ",
   enabled = function(item, ctx)
     local m = get_meta(item, ctx)
     return m and m.discussion_id ~= nil or false
@@ -305,7 +305,7 @@ M.actions.glab_diff_comment = {
   desc = "Add diff comment",
   title = "Comment on diff in {type} {hash}",
   priority = 150,
-  icon = " ",
+  icon = " ",
   type = "mr",
   enabled = function(item, ctx)
     local m = get_meta(item, ctx)
@@ -391,7 +391,7 @@ M.actions.glab_diff_comment = {
 M.actions.glab_comment = {
   desc = "Add comment",
   title = "Comment on {type} {hash}",
-  icon = " ",
+  icon = " ",
   action = function(item, ctx)
     local m = get_meta(item, ctx)
     if m and m.discussion_id then
@@ -413,7 +413,7 @@ end
 ---@type table<string, snacks.glab.cli.Action>
 M.cli_actions = {
   glab_comment = {
-    icon = " ",
+    icon = " ",
     title = "Comment on {type} {hash}",
     success = "Commented on {type} {hash}",
     edit = "body",
@@ -424,7 +424,7 @@ M.cli_actions = {
   },
   glab_checkout = {
     cmd = "checkout",
-    icon = " ",
+    icon = " ",
     type = "mr",
     confirm = "Are you sure you want to checkout MR !{iid}?",
     title = "Checkout MR !{iid}",
@@ -440,7 +440,7 @@ M.cli_actions = {
     end,
   },
   glab_edit = {
-    icon = " ",
+    icon = " ",
     fields = {
       { arg = "title", prop = "title", name = "Title" },
     },
@@ -488,7 +488,7 @@ M.cli_actions = {
   },
   glab_reopen = {
     cmd = "reopen",
-    icon = " ",
+    icon = " ",
     title = "Reopen {type} {hash}",
     success = "Reopened {type} {hash}",
     enabled = function(item)
@@ -529,7 +529,7 @@ M.cli_actions = {
   },
   glab_revoke = {
     cmd = "revoke",
-    icon = " ",
+    icon = " ",
     type = "mr",
     title = "Revoke approval of MR !{iid}",
     success = "Revoked approval of MR !{iid}",
