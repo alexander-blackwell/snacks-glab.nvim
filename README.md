@@ -37,7 +37,7 @@ built on the [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli).
 ```lua
 -- lazy.nvim
 {
-  "alexanderblackwell/snacks-glab.nvim",
+  "alexander-blackwell/snacks-glab.nvim",
   -- or for a local checkout:
   -- dir = "~/projects/snacks-glab.nvim",
   dependencies = { "folke/snacks.nvim" },
