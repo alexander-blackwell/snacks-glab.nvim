@@ -100,8 +100,9 @@ Snacks.picker.glab_pipeline({ status = "failed", ref = "main" })
 -- Jobs of a pipeline
 Snacks.picker.glab_job({ pipeline = 4567 })
 
--- Open issue/MR in a buffer
-vim.cmd.edit("glab://group/subgroup/project/issue/42")
+-- Open issue/MR in a buffer (repo defaults to the current origin remote)
+Snacks.glab.open({ type = "issue", iid = 42, repo = "group/subgroup/project" })
+vim.cmd.edit("glab://group/subgroup/project/issue/42") -- equivalent
 ```
 
 ### Available Actions

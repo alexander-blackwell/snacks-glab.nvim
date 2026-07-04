@@ -207,6 +207,16 @@ try("glab:// buffer renders", function()
   return true
 end)
 
+try("Snacks.glab.open opens the buffer", function()
+  Snacks.glab.open({ type = "mr", iid = 7, repo = "group/sub/proj" })
+  local buf = vim.api.nvim_get_current_buf()
+  assert(vim.api.nvim_buf_get_name(buf) == "glab://group/sub/proj/mr/7", vim.api.nvim_buf_get_name(buf))
+  assert(wait_for(function()
+    return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"):find("rate limiting", 1, true) ~= nil
+  end), "timeout waiting for mr render")
+  return true
+end)
+
 -- 8. actions
 try("issue actions enabled correctly", function()
   local Actions = require("snacks.glab.actions")

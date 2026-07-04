@@ -189,6 +189,28 @@ function M.pipeline(opts)
   return Snacks.picker.glab_pipeline(opts)
 end
 
+--- Open an issue or MR in a glab:// buffer.
+--- `repo` defaults to the origin remote of the cwd (subgroups supported).
+---@param opts {type: "issue"|"mr", iid: number, repo?: string}
+function M.open(opts)
+  opts = opts or {}
+  if not (opts.type and opts.iid) then
+    Snacks.notify.error("Snacks.glab.open: `type` and `iid` are required")
+    return
+  end
+  local repo = opts.repo
+  if not repo then
+    local url = vim.trim(vim.fn.system({ "git", "remote", "get-url", "origin" }))
+    if vim.v.shell_error ~= 0 or url == "" then
+      Snacks.notify.error("Snacks.glab.open: not in a git repo; pass `repo` explicitly")
+      return
+    end
+    -- https://host/group/sub/proj.git or git@host:group/sub/proj.git -> group/sub/proj
+    repo = url:gsub("%.git$", ""):gsub("^%w+://[^/]+/", ""):gsub("^[^@/]+@[^:]+:", "")
+  end
+  vim.cmd.edit(require("snacks.glab.item").to_uri({ repo = repo, type = opts.type, iid = opts.iid }))
+end
+
 ---@private
 function M.config()
   M._config = M._config or Snacks.config.get("glab", defaults)
