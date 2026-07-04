@@ -184,6 +184,11 @@ function M.mr(opts)
   return Snacks.picker.glab_mr(opts)
 end
 
+---@param opts? snacks.picker.glab.pipeline.Config
+function M.pipeline(opts)
+  return Snacks.picker.glab_pipeline(opts)
+end
+
 ---@private
 function M.config()
   M._config = M._config or Snacks.config.get("glab", defaults)

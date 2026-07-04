@@ -18,6 +18,8 @@ built on the [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli).
   - Checkout MR branches locally
   - Mark MRs as draft/ready
   - View MR diffs with syntax highlighting and inline discussion threads
+  - Retry, cancel, and delete **pipelines**; run new ones
+  - Retry, cancel, and trigger manual **jobs**; view job logs
 - ⌨️ Customizable **keymaps** for common GitLab operations
 - 🎨 **Syntax highlighting** using Treesitter
 - 🔗 Open issues/MRs in your web browser
@@ -45,6 +47,7 @@ built on the [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli).
     { "<leader>gI", function() Snacks.picker.glab_issue({ state = "all" }) end, desc = "GitLab Issues (all)" },
     { "<leader>gp", function() Snacks.picker.glab_mr() end, desc = "GitLab MRs (open)" },
     { "<leader>gP", function() Snacks.picker.glab_mr({ state = "all" }) end, desc = "GitLab MRs (all)" },
+    { "<leader>gC", function() Snacks.picker.glab_pipeline() end, desc = "GitLab Pipelines (CI)" },
   },
 }
 ```
@@ -87,6 +90,16 @@ Snacks.picker.glab_mr({ state = "merged", repo = "group/subgroup/project" })
 -- View MR diff with inline discussions
 Snacks.picker.glab_diff({ mr = 123 })
 
+-- Browse CI/CD pipelines (and drill into their jobs)
+Snacks.picker.glab_pipeline()
+
+-- Pipelines of a specific MR, or filtered
+Snacks.picker.glab_pipeline({ mr = 123 })
+Snacks.picker.glab_pipeline({ status = "failed", ref = "main" })
+
+-- Jobs of a pipeline
+Snacks.picker.glab_job({ pipeline = 4567 })
+
 -- Open issue/MR in a buffer
 vim.cmd.edit("glab://group/subgroup/project/issue/42")
 ```
@@ -115,6 +128,19 @@ When viewing an issue or MR in the picker, press `<cr>` to show available action
 - **Diff comments** — comment on specific lines, with GitLab
   [suggestions](https://docs.gitlab.com/ee/user/project/merge_requests/reviews/suggestions.html)
   pre-filled from visual selections
+
+**Pipelines & Jobs:**
+
+Browse pipelines with `Snacks.picker.glab_pipeline()` (or the **View pipelines** action
+on any MR), press `<cr>` for actions:
+
+- **View jobs** — drill into the pipeline's jobs
+- **Retry / Cancel / Delete** — gated on the pipeline status
+- **Run new pipeline** — start a fresh pipeline on the same ref
+- **Open in browser / Yank URL**
+
+Jobs get their own actions: **View log** (rendered in a split, ANSI-clean),
+**Retry**, **Cancel**, and **Run manual job** for `when: manual` jobs.
 
 ### GitLab Buffers
 

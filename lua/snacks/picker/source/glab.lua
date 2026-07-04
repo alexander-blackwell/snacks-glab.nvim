@@ -398,4 +398,154 @@ function M.format_reaction(item, picker)
   return ret
 end
 
+--- Highlight group for a pipeline/job status, e.g. "running" -> SnacksGlabCheckRunning
+---@param status string
+local function status_hl(status)
+  local title = Snacks.picker.util.title(status or "pending"):gsub("_(%l)", string.upper)
+  return "SnacksGlabCheck" .. title:gsub("_", "")
+end
+
+---@param seconds? number
+local function duration(seconds)
+  if not seconds or seconds <= 0 then
+    return nil
+  end
+  seconds = math.floor(seconds)
+  if seconds < 60 then
+    return ("%ds"):format(seconds)
+  end
+  return ("%dm%02ds"):format(math.floor(seconds / 60), seconds % 60)
+end
+
+--- Shape a REST pipeline into a picker item
+---@param p snacks.glab.Pipeline
+---@param opts? {repo?: string}
+function M.pipeline_item(p, opts)
+  opts = opts or {}
+  local Item = require("snacks.glab.item")
+  return {
+    text = table.concat({ tostring(p.id), p.ref or "", p.status or "", p.source or "" }, " "),
+    type = "pipeline",
+    id = p.id,
+    hash = "#" .. tostring(p.id),
+    status = p.status,
+    ref = p.ref,
+    sha = p.sha,
+    source = p.source,
+    web_url = p.web_url,
+    repo = opts.repo or (p.web_url and Item.get_repo(p.web_url)) or nil,
+    created = Item.ts(p.created_at),
+    pipeline = p,
+  }
+end
+
+--- Shape a REST job into a picker item
+---@param j snacks.glab.Job
+---@param opts? {repo?: string, pipeline?: number}
+function M.job_item(j, opts)
+  opts = opts or {}
+  local Item = require("snacks.glab.item")
+  return {
+    text = table.concat({ j.name or "", j.stage or "", j.status or "" }, " "),
+    type = "job",
+    id = j.id,
+    hash = "#" .. tostring(j.id),
+    name = j.name,
+    stage = j.stage,
+    status = j.status,
+    allow_failure = j.allow_failure,
+    duration = j.duration,
+    web_url = j.web_url,
+    repo = opts.repo or (j.web_url and Item.get_repo(j.web_url)) or nil,
+    created = Item.ts(j.created_at),
+    pipeline_id = opts.pipeline,
+    job = j,
+  }
+end
+
+---@param opts snacks.picker.glab.pipeline.Config
+---@type snacks.picker.finder
+function M.pipeline(opts, ctx)
+  opts = opts or {}
+  ---@async
+  return function(cb)
+    local pipelines
+    Api.pipelines(function(data)
+      pipelines = data or {}
+    end, opts):wait()
+    for _, p in ipairs(pipelines or {}) do
+      cb(M.pipeline_item(p, opts))
+    end
+  end
+end
+
+---@param opts snacks.picker.glab.job.Config
+---@type snacks.picker.finder
+function M.job(opts, ctx)
+  opts = opts or {}
+  if not opts.pipeline then
+    Snacks.notify.error("snacks.picker.glab.job: `opts.pipeline` is required")
+    return {}
+  end
+  ---@async
+  return function(cb)
+    local jobs
+    Api.jobs(function(data)
+      jobs = data or {}
+    end, { repo = opts.repo, pipeline = opts.pipeline }):wait()
+    for _, j in ipairs(jobs or {}) do
+      cb(M.job_item(j, { repo = opts.repo, pipeline = opts.pipeline }))
+    end
+  end
+end
+
+---@type snacks.picker.format
+function M.format_pipeline(item, picker)
+  local ret = {} ---@type snacks.picker.Highlight[]
+  local a = Snacks.picker.util.align
+  local config = require("snacks.glab").config()
+
+  local icon = config.icons.pipeline[item.status] or config.icons.pipeline.pending
+  ret[#ret + 1] = { a(icon, 2), status_hl(item.status) }
+  ret[#ret + 1] = { " " }
+  ret[#ret + 1] = { a(item.hash, 7), "SnacksPickerDimmed" }
+  ret[#ret + 1] = { a(item.status or "", 9), status_hl(item.status) }
+  ret[#ret + 1] = { " " }
+  ret[#ret + 1] = { a(item.ref or "", 28, { truncate = true }), "SnacksGlabBranch" }
+  ret[#ret + 1] = { " " }
+  ret[#ret + 1] = { a(item.sha and item.sha:sub(1, 8) or "", 9), "SnacksPickerDimmed" }
+  ret[#ret + 1] = { a(item.source or "", 20), "SnacksPickerComment" }
+  if item.created then
+    ret[#ret + 1] = { " " }
+    ret[#ret + 1] = { Snacks.picker.util.reltime(item.created), "SnacksPickerGitDate" }
+  end
+  return ret
+end
+
+---@type snacks.picker.format
+function M.format_job(item, picker)
+  local ret = {} ---@type snacks.picker.Highlight[]
+  local a = Snacks.picker.util.align
+  local config = require("snacks.glab").config()
+
+  local icon = config.icons.pipeline[item.status] or config.icons.pipeline.pending
+  ret[#ret + 1] = { a(icon, 2), status_hl(item.status) }
+  ret[#ret + 1] = { " " }
+  ret[#ret + 1] = { a(item.status or "", 9), status_hl(item.status) }
+  ret[#ret + 1] = { " " }
+  vim.list_extend(ret, Snacks.picker.highlight.badge(item.stage or "", "SnacksGlabStatBadge"))
+  ret[#ret + 1] = { " " }
+  ret[#ret + 1] = { item.name or "" }
+  local dur = duration(item.duration)
+  if dur then
+    ret[#ret + 1] = { " " }
+    ret[#ret + 1] = { dur, "SnacksPickerDimmed" }
+  end
+  if item.allow_failure and item.status == "failed" then
+    ret[#ret + 1] = { " " }
+    ret[#ret + 1] = { "(allowed to fail)", "SnacksPickerComment" }
+  end
+  return ret
+end
+
 return M

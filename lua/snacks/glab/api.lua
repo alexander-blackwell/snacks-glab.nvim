@@ -185,7 +185,11 @@ M.fetch_sync = wrap_sync(M.fetch)
 ---@param opts snacks.glab.api.Api
 function M.request(cb, opts)
   local endpoint = opts.endpoint
-  endpoint = endpoint:gsub("{project}", enc(opts.repo))
+  -- function replacement: the encoded repo contains `%2F`, which a plain
+  -- gsub replacement string would treat as a capture reference
+  endpoint = endpoint:gsub("{project}", function()
+    return enc(opts.repo)
+  end)
   endpoint = endpoint:gsub("{iid}", opts.iid and tostring(opts.iid) or "{iid}")
   local args = { "api", endpoint }
   for _, option in ipairs({ "method", "paginate", "silent" }) do
@@ -393,6 +397,9 @@ end
 --- Mark an item dirty and re-render any buffers showing it
 ---@param item snacks.picker.glab.Item
 function M.refresh(item)
+  if not item.uri then
+    return -- pipelines/jobs have no buffers or cache entries
+  end
   item.dirty = true
   cache_set(item)
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
@@ -428,6 +435,62 @@ function M.current_mr()
   mr = mr and mr.iid and cache_set(Item.new(mr, api_opts)) or nil
   mr_cache[key] = mr or false
   return mr
+end
+
+--- List pipelines for a project or a merge request
+---@param cb fun(pipelines?: snacks.glab.Pipeline[])
+---@param opts? {repo?: string, mr?: number, limit?: number, status?: string, ref?: string, source?: string, username?: string, scope?: string, sha?: string}
+function M.pipelines(cb, opts)
+  opts = opts or {}
+  local limit = math.min(opts.limit or 30, 100)
+  if opts.mr then
+    -- pipelines that ran for a specific MR
+    return M.request(function(_, data)
+      cb(data)
+    end, {
+      endpoint = ("projects/{project}/merge_requests/{iid}/pipelines?per_page=%d"):format(limit),
+      repo = opts.repo,
+      iid = opts.mr,
+    })
+  end
+  local args = { "ci", "list", "--per-page", tostring(limit) }
+  set_options(args, { "status", "ref", "source", "username", "scope", "sha" }, opts)
+  return M.fetch(function(_, data)
+    cb(data)
+  end, {
+    args = args,
+    repo = opts.repo,
+    notify = opts.notify,
+  })
+end
+
+--- List the jobs of a pipeline
+---@param cb fun(jobs?: snacks.glab.Job[])
+---@param opts {repo?: string, pipeline: number}
+function M.jobs(cb, opts)
+  return M.request(function(_, data)
+    cb(data)
+  end, {
+    endpoint = ("projects/{project}/pipelines/%s/jobs?per_page=100&include_retried=false"):format(
+      tostring(opts.pipeline)
+    ),
+    repo = opts.repo,
+  })
+end
+
+--- Fetch the raw log (trace) of a job. The response is plain text, not JSON.
+---@param cb fun(trace?: string)
+---@param opts {repo?: string, job: number}
+function M.trace(cb, opts)
+  local endpoint = ("projects/%s/jobs/%s/trace"):format(
+    (opts.repo and opts.repo:gsub("/", "%%2F") or ":id"),
+    tostring(opts.job)
+  )
+  return M.cmd(function(_, data)
+    cb(data)
+  end, {
+    args = { "api", endpoint },
+  })
 end
 
 return M

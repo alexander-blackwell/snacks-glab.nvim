@@ -161,14 +161,19 @@ M.actions.glab_browse = {
   desc = "Open in web browser",
   title = "Open {type} {hash} in web browser",
   icon = "󰖟 ",
+  type = { "issue", "mr", "pipeline", "job" },
   action = function(_, ctx)
     for _, item in ipairs(ctx.items) do
-      Api.cmd(function()
-        Snacks.notify.info(("Opened %s in web browser"):format(item.hash))
-      end, {
-        args = { item.type, "view", tostring(item.iid), "--web" },
-        repo = item.repo,
-      })
+      if item.type == "pipeline" or item.type == "job" then
+        vim.ui.open(item.web_url)
+      else
+        Api.cmd(function()
+          Snacks.notify.info(("Opened %s in web browser"):format(item.hash))
+        end, {
+          args = { item.type, "view", tostring(item.iid), "--web" },
+          repo = item.repo,
+        })
+      end
     end
     if ctx.picker then
       ctx.picker.list:set_selected() -- clear selection
@@ -255,6 +260,7 @@ M.actions.glab_label = {
 M.actions.glab_yank = {
   desc = "Yank URL(s) to clipboard",
   icon = " ",
+  type = { "issue", "mr", "pipeline", "job" },
   action = function(_, ctx)
     if vim.fn.mode():find("^[vV]") and ctx.picker then
       ctx.picker.list:select()
@@ -269,6 +275,84 @@ M.actions.glab_yank = {
     local value = table.concat(urls, "\n")
     vim.fn.setreg(vim.v.register or "+", value, "l")
     Snacks.notify.info("Yanked " .. #urls .. " URL(s)")
+  end,
+}
+
+M.actions.glab_mr_pipelines = {
+  desc = "View pipelines",
+  title = "View pipelines for {type} {hash}",
+  icon = " ",
+  priority = 90,
+  type = "mr",
+  action = function(item, ctx)
+    Snacks.picker.glab_pipeline({
+      repo = item.repo,
+      mr = item.iid,
+    })
+  end,
+}
+
+M.actions.glab_ci_jobs = {
+  desc = "View jobs",
+  title = "View jobs of pipeline {hash}",
+  icon = " ",
+  priority = 100,
+  type = "pipeline",
+  action = function(item, ctx)
+    Snacks.picker.glab_job({
+      repo = item.repo,
+      pipeline = item.id,
+    })
+  end,
+}
+
+M.actions.glab_ci_run = {
+  desc = "Run new pipeline",
+  title = "Run a new pipeline on {ref}",
+  icon = "󰀊 ",
+  type = "pipeline",
+  action = function(item, ctx)
+    Snacks.picker.util.confirm(("Run a new pipeline on %s?"):format(item.ref), function()
+      Api.cmd(function()
+        vim.schedule(function()
+          Snacks.notify.info(("Started a new pipeline on %s"):format(item.ref))
+          if ctx.picker and not ctx.picker.closed then
+            ctx.picker:refresh()
+          end
+        end)
+      end, {
+        args = { "ci", "run", "--branch", item.ref },
+        repo = item.repo,
+      })
+    end)
+  end,
+}
+
+M.actions.glab_job_log = {
+  desc = "View log",
+  title = "View log of job {name}",
+  icon = " ",
+  priority = 100,
+  type = "job",
+  action = function(item, ctx)
+    Api.trace(function(trace)
+      vim.schedule(function()
+        if not trace or trace == "" then
+          Snacks.notify.warn(("No log available for job %s"):format(item.name))
+          return
+        end
+        local lines = M.clean_trace(trace)
+        vim.cmd("botright split")
+        local buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_name(buf, ("glab-job-log://%s/%s"):format(item.id, item.name))
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+        vim.bo[buf].modifiable = false
+        vim.bo[buf].bufhidden = "wipe"
+        vim.bo[buf].filetype = "glablog"
+        vim.api.nvim_win_set_buf(0, buf)
+        vim.api.nvim_win_set_cursor(0, { #lines, 0 })
+      end)
+    end, { repo = item.repo, job = item.id })
   end,
 }
 
@@ -537,6 +621,85 @@ M.cli_actions = {
       return item.state == "open" and #(item.item.approved_by or {}) > 0
     end,
   },
+  glab_ci_retry = {
+    icon = "󰚰 ",
+    type = "pipeline",
+    title = "Retry pipeline {hash}",
+    success = "Retried pipeline {hash}",
+    api = {
+      endpoint = "projects/{project}/pipelines/{id}/retry",
+      method = "POST",
+    },
+    enabled = function(item)
+      return item.status == "failed" or item.status == "canceled"
+    end,
+  },
+  glab_ci_cancel = {
+    icon = config.icons.crossmark,
+    type = "pipeline",
+    title = "Cancel pipeline {hash}",
+    success = "Canceled pipeline {hash}",
+    api = {
+      endpoint = "projects/{project}/pipelines/{id}/cancel",
+      method = "POST",
+    },
+    enabled = function(item)
+      return vim.tbl_contains(
+        { "created", "waiting_for_resource", "preparing", "pending", "running", "scheduled" },
+        item.status
+      )
+    end,
+  },
+  glab_ci_delete = {
+    icon = config.icons.crossmark,
+    type = "pipeline",
+    title = "Delete pipeline {hash}",
+    success = "Deleted pipeline {hash}",
+    confirm = "Are you sure you want to delete pipeline {hash}? This cannot be undone.",
+    api = {
+      endpoint = "projects/{project}/pipelines/{id}",
+      method = "DELETE",
+    },
+  },
+  glab_job_retry = {
+    icon = "󰚰 ",
+    type = "job",
+    title = "Retry job {name}",
+    success = "Retried job {name}",
+    api = {
+      endpoint = "projects/{project}/jobs/{id}/retry",
+      method = "POST",
+    },
+    enabled = function(item)
+      return vim.tbl_contains({ "failed", "canceled", "success" }, item.status)
+    end,
+  },
+  glab_job_play = {
+    icon = config.icons.pipeline.manual,
+    type = "job",
+    title = "Run manual job {name}",
+    success = "Started job {name}",
+    api = {
+      endpoint = "projects/{project}/jobs/{id}/play",
+      method = "POST",
+    },
+    enabled = function(item)
+      return item.status == "manual"
+    end,
+  },
+  glab_job_cancel = {
+    icon = config.icons.crossmark,
+    type = "job",
+    title = "Cancel job {name}",
+    success = "Canceled job {name}",
+    api = {
+      endpoint = "projects/{project}/jobs/{id}/cancel",
+      method = "POST",
+    },
+    enabled = function(item)
+      return vim.tbl_contains({ "created", "waiting_for_resource", "pending", "running" }, item.status)
+    end,
+  },
 }
 
 ---@param opts snacks.glab.cli.Action
@@ -549,6 +712,25 @@ function M.cli_action(opts)
       M.cli(item, opts, ctx)
     end,
   }, { __index = opts })
+end
+
+--- Strip ANSI escape sequences and CI section markers from a job trace
+---@param text string
+---@return string[] lines
+function M.clean_trace(text)
+  text = text:gsub("\r\n", "\n")
+  text = text:gsub("\27%[[0-9;]*[a-zA-Z]", "") -- CSI sequences (colors, cursor)
+  text = text:gsub("\27%]%d+;[^\7]*\7", "") -- OSC sequences
+  text = text:gsub("section_start:%d+:%S+", ""):gsub("section_end:%d+:%S+", "")
+  local lines = {} ---@type string[]
+  for _, line in ipairs(vim.split(text, "\n", { plain = true })) do
+    line = line:gsub(".*\r", "") -- keep only the final overwrite of progress lines
+    lines[#lines + 1] = line
+  end
+  while #lines > 0 and lines[#lines]:match("^%s*$") do
+    table.remove(lines)
+  end
+  return lines
 end
 
 ---@param str string
@@ -578,7 +760,10 @@ function M.get_actions(item, ctx)
   vim.list_extend(keys, vim.tbl_keys(M.cli_actions))
   for _, name in ipairs(keys) do
     local action = M.actions[name]
-    local enabled = action.type == nil or action.type == item.type
+    local kinds = action.type == nil and { "issue", "mr" }
+      or type(action.type) == "string" and { action.type }
+      or action.type --[[@as string[] ]]
+    local enabled = vim.tbl_contains(kinds, item.type)
     enabled = enabled and (action.enabled == nil or action.enabled(item, ctx))
     if enabled then
       local a = setmetatable({}, { __index = action })
@@ -601,6 +786,9 @@ function M.cli(item, action, ctx)
   if action.api then
     action.api = vim.deepcopy(action.api)
     action.api.endpoint = action.api.endpoint:gsub("{collection}", M.rest(item.type))
+    if item.id then
+      action.api.endpoint = action.api.endpoint:gsub("{id}", tostring(item.id))
+    end
     action.api.repo = action.api.repo or item.repo
     action.api.iid = action.api.iid or item.iid
   end

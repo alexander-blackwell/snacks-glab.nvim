@@ -247,11 +247,121 @@ try("mr diff annotations", function()
   return true
 end)
 
+-- 10. pipelines and jobs
+local Src = require("snacks.picker.source.glab")
+local pipe_failed, pipe_running, job_items
+
+try("pipeline list via mock glab", function()
+  local pipelines
+  Api.pipelines(function(data)
+    pipelines = data or {}
+  end, {})
+  assert(wait_for(function()
+    return pipelines ~= nil
+  end), "timeout")
+  assert(#pipelines == 2, "expected 2 pipelines, got " .. #pipelines)
+  pipe_running = Src.pipeline_item(pipelines[1], {})
+  pipe_failed = Src.pipeline_item(pipelines[2], {})
+  assert(pipe_running.type == "pipeline" and pipe_running.hash == "#55", "hash: " .. tostring(pipe_running.hash))
+  assert(pipe_running.status == "running" and pipe_failed.status == "failed", "statuses")
+  assert(pipe_running.repo == "group/sub/proj", "repo from web_url: " .. tostring(pipe_running.repo))
+  assert(pipe_running.ref == "feat/rate-limit" and pipe_failed.ref == "main", "refs")
+  assert(type(pipe_running.created) == "number", "created epoch")
+  return true
+end)
+
+try("mr-scoped pipeline list", function()
+  local pipelines
+  Api.pipelines(function(data)
+    pipelines = data or {}
+  end, { repo = "group/sub/proj", mr = 7 })
+  assert(wait_for(function()
+    return pipelines ~= nil
+  end), "timeout")
+  assert(#pipelines == 1 and pipelines[1].id == 55, "mr pipelines")
+  return true
+end)
+
+try("job list via mock glab", function()
+  local jobs
+  Api.jobs(function(data)
+    jobs = data or {}
+  end, { repo = "group/sub/proj", pipeline = 55 })
+  assert(wait_for(function()
+    return jobs ~= nil
+  end), "timeout")
+  assert(#jobs == 3, "expected 3 jobs, got " .. #jobs)
+  job_items = {}
+  for _, j in ipairs(jobs) do
+    job_items[#job_items + 1] = Src.job_item(j, { repo = "group/sub/proj", pipeline = 55 })
+  end
+  assert(job_items[1].name == "build" and job_items[1].status == "success", "build job")
+  assert(job_items[2].stage == "test" and job_items[2].type == "job", "test job")
+  assert(job_items[3].status == "manual", "manual job")
+  return true
+end)
+
+try("pipeline actions gated by status", function()
+  local Actions = require("snacks.glab.actions")
+  local failed = Actions.get_actions(pipe_failed, { items = { pipe_failed } })
+  assert(failed.glab_ci_retry, "retry enabled for failed pipeline")
+  assert(not failed.glab_ci_cancel, "cancel disabled for failed pipeline")
+  assert(failed.glab_ci_delete and failed.glab_ci_jobs and failed.glab_ci_run, "common pipeline actions")
+  assert(failed.glab_browse and failed.glab_yank, "browse/yank apply to pipelines")
+  assert(not failed.glab_close and not failed.glab_comment and not failed.glab_open, "no issue/mr actions leak")
+  assert(failed.glab_ci_retry.desc == "Retry pipeline #54", "tpl desc: " .. tostring(failed.glab_ci_retry.desc))
+  local running = Actions.get_actions(pipe_running, { items = { pipe_running } })
+  assert(running.glab_ci_cancel, "cancel enabled for running pipeline")
+  assert(not running.glab_ci_retry, "retry disabled for running pipeline")
+  return true
+end)
+
+try("job actions gated by status", function()
+  local Actions = require("snacks.glab.actions")
+  local ok_job = Actions.get_actions(job_items[1], { items = { job_items[1] } })
+  assert(ok_job.glab_job_retry and ok_job.glab_job_log, "retry+log for finished job")
+  assert(not ok_job.glab_job_play and not ok_job.glab_job_cancel, "no play/cancel for success")
+  local manual = Actions.get_actions(job_items[3], { items = { job_items[3] } })
+  assert(manual.glab_job_play, "play enabled for manual job")
+  assert(not manual.glab_job_retry, "retry disabled for manual job")
+  assert(manual.glab_job_play.desc == "Run manual job deploy", tostring(manual.glab_job_play.desc))
+  return true
+end)
+
+try("no CI actions leak into issue palette", function()
+  local Actions = require("snacks.glab.actions")
+  local actions = Actions.get_actions(issue_item, { items = { issue_item } })
+  assert(not actions.glab_ci_jobs and not actions.glab_ci_retry and not actions.glab_job_log, "no CI actions")
+  return true
+end)
+
+try("mr palette offers pipelines", function()
+  local Actions = require("snacks.glab.actions")
+  local actions = Actions.get_actions(mr_item, { items = { mr_item } })
+  assert(actions.glab_mr_pipelines, "glab_mr_pipelines present")
+  return true
+end)
+
+try("clean_trace strips ansi and progress", function()
+  local Actions = require("snacks.glab.actions")
+  local raw = "Running\n\27[32msection_start:1750000000:step\27[0K\27[1mStep\27[0m\n"
+    .. "progress   1%\rprogress  50%\rprogress 100%\n"
+    .. "section_end:1750000001:step\27[0K\n\27[31mERROR: failed\27[0m"
+  local lines = Actions.clean_trace(raw)
+  local text = table.concat(lines, "\n")
+  assert(not text:find("\27", 1, true), "ansi stripped")
+  assert(not text:find("section_start", 1, true), "section markers stripped")
+  assert(text:find("progress 100%%"), "progress collapsed to final state")
+  assert(not text:find("progress  50%%"), "intermediate progress dropped")
+  assert(lines[#lines] == "ERROR: failed", "last line: " .. tostring(lines[#lines]))
+  return true
+end)
+
 -- 10. icon consistency: every palette action carries a real glyph
 try("all palette actions have icons", function()
   local Actions = require("snacks.glab.actions")
   local skip = { glab_actions = true, glab_perform_action = true }
-  for _, it in ipairs({ issue_item, mr_item }) do
+  for _, it in ipairs({ issue_item, mr_item, pipe_failed, pipe_running, job_items[1], job_items[3] }) do
     local actions = Actions.get_actions(it, { items = { it } })
     for name, action in pairs(actions) do
       if not skip[name] then

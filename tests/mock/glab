@@ -124,8 +124,50 @@ EOF
   *"/merge_requests/7/approvals"*)
     echo '{"approved_by": [{"user": {"id": 9, "username": "asmith"}}]}'
     ;;
+  *"/merge_requests/7/pipelines"*)
+    cat <<'EOF'
+[
+  {"id": 55, "status": "running", "ref": "feat/rate-limit", "sha": "abc123def456", "source": "merge_request_event",
+   "created_at": "2026-06-25T08:00:00Z",
+   "web_url": "https://gitlab.example.com/group/sub/proj/-/pipelines/55"}
+]
+EOF
+    ;;
   *"/merge_requests/7"*)
     mr_detail
+    ;;
+  "ci list"*)
+    cat <<'EOF'
+[
+  {"id": 55, "status": "running", "ref": "feat/rate-limit", "sha": "abc123def456", "source": "merge_request_event",
+   "created_at": "2026-06-25T08:00:00Z",
+   "web_url": "https://gitlab.example.com/group/sub/proj/-/pipelines/55"},
+  {"id": 54, "status": "failed", "ref": "main", "sha": "fff000aaa111", "source": "push",
+   "created_at": "2026-06-24T10:00:00Z",
+   "web_url": "https://gitlab.example.com/group/sub/proj/-/pipelines/54"}
+]
+EOF
+    ;;
+  "ci run"*)
+    echo "Created pipeline (id: 56), status: created"
+    ;;
+  *"/pipelines/55/jobs"*)
+    cat <<'EOF'
+[
+  {"id": 901, "name": "build", "stage": "build", "status": "success", "allow_failure": false, "duration": 83.2,
+   "created_at": "2026-06-25T08:00:10Z", "web_url": "https://gitlab.example.com/group/sub/proj/-/jobs/901"},
+  {"id": 902, "name": "test", "stage": "test", "status": "failed", "allow_failure": false, "duration": 45.7,
+   "created_at": "2026-06-25T08:02:00Z", "web_url": "https://gitlab.example.com/group/sub/proj/-/jobs/902"},
+  {"id": 903, "name": "deploy", "stage": "deploy", "status": "manual", "allow_failure": false,
+   "created_at": "2026-06-25T08:05:00Z", "web_url": "https://gitlab.example.com/group/sub/proj/-/jobs/903"}
+]
+EOF
+    ;;
+  *"/pipelines/54/retry"*|*"/pipelines/55/cancel"*|*"/jobs/902/retry"*|*"/jobs/903/play"*)
+    echo '{"id": 56, "status": "created"}'
+    ;;
+  *"/jobs/902/trace"*)
+    printf 'Running with gitlab-runner 17.0\n\x1b[32msection_start:1750000000:step_script\x1b[0K\x1b[1mExecuting step\x1b[0m\nprogress   1%%\rprogress  50%%\rprogress 100%%\nTest failed: assertion error\nsection_end:1750000001:step_script\x1b[0K\n\x1b[31mERROR: Job failed: exit code 1\x1b[0m\n'
     ;;
   *"/labels"*)
     cat <<'EOF'

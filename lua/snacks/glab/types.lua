@@ -48,7 +48,7 @@
 ---@field template? string template for the scratch buffer
 ---@field desc? string description
 ---@field icon? string icon for the action
----@field type? "issue" | "mr" action for items of this type (nil means both)
+---@field type? snacks.glab.Kind|snacks.glab.Kind[] item kinds this action applies to (nil means issues and MRs)
 ---@field enabled? fun(item: snacks.picker.glab.Item, ctx: snacks.glab.action.ctx): boolean
 ---@field success? string success message shown after the action
 ---@field confirm? string confirmation message shown before performing the action
@@ -75,6 +75,20 @@
 ---@field name string
 ---@field color? string hex color, e.g. "#ff0000" (only known from the labels API)
 ---@field description? string
+
+---@alias snacks.glab.Kind "issue" | "mr" | "pipeline" | "job"
+
+--- CI job as returned by the REST API
+---@class snacks.glab.Job
+---@field id number
+---@field name string
+---@field stage string
+---@field status string
+---@field allow_failure? boolean
+---@field duration? number seconds
+---@field created_at string
+---@field web_url? string
+---@field pipeline? snacks.glab.Pipeline
 
 ---@class snacks.glab.Pipeline
 ---@field id number

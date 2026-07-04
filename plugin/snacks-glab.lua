@@ -125,6 +125,59 @@ local function register()
     format = "glab_format_action",
     confirm = "glab_perform_action",
   }
+
+  ---@class snacks.picker.glab.pipeline.Config: snacks.picker.Config
+  ---@field repo? string GitLab project. Defaults to the current repo
+  ---@field mr? number list pipelines of this MR iid instead of the project
+  ---@field limit? number maximum number of pipelines to fetch (default: 30)
+  ---@field status? string filter by status (running, pending, success, failed, ...)
+  ---@field ref? string filter by ref
+  ---@field source? string filter by trigger source (push, merge_request_event, ...)
+  ---@field username? string filter by the user that triggered the pipeline
+  sources.glab_pipeline = {
+    layout = { preset = "select", layout = { max_width = 110, min_width = 90 } },
+    title = "󰮠  Pipelines",
+    finder = "glab_pipeline",
+    format = "glab_format_pipeline",
+    confirm = "glab_actions",
+    win = {
+      input = {
+        keys = {
+          ["<a-b>"] = { "glab_browse", mode = { "n", "i" } },
+          ["<c-y>"] = { "glab_yank", mode = { "n", "i" } },
+        },
+      },
+      list = {
+        keys = {
+          ["y"] = { "glab_yank", mode = { "n", "x" } },
+        },
+      },
+    },
+  }
+
+  ---@class snacks.picker.glab.job.Config: snacks.picker.Config
+  ---@field repo? string GitLab project. Defaults to the current repo
+  ---@field pipeline number pipeline id to list jobs for
+  sources.glab_job = {
+    layout = { preset = "select", layout = { max_width = 100, min_width = 80 } },
+    title = "󰮠  Jobs",
+    finder = "glab_job",
+    format = "glab_format_job",
+    confirm = "glab_actions",
+    win = {
+      input = {
+        keys = {
+          ["<a-b>"] = { "glab_browse", mode = { "n", "i" } },
+          ["<c-y>"] = { "glab_yank", mode = { "n", "i" } },
+        },
+      },
+      list = {
+        keys = {
+          ["y"] = { "glab_yank", mode = { "n", "x" } },
+        },
+      },
+    },
+  }
 end
 
 register()
