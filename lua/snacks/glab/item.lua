@@ -48,6 +48,24 @@ local function ts(s)
 end
 M.ts = ts
 
+--- Recursively replace json nulls (vim.NIL) with nil.
+--- Real GitLab serializes absent positions as `"position": null`, and vim.NIL
+--- is truthy userdata that errors on indexing.
+---@generic T
+---@param t T
+---@return T
+local function denil(t)
+  if t == vim.NIL then
+    return nil
+  end
+  if type(t) == "table" then
+    for k, v in pairs(t) do
+      t[k] = denil(v)
+    end
+  end
+  return t
+end
+
 ---@param obj {body?:string, created_at?:string, created?:number}
 local function fix(obj)
   obj.body = obj.body and obj.body:gsub("\r\n", "\n") or nil
@@ -142,6 +160,7 @@ function M:update(data, fields)
 
   -- normalize discussions: drop system notes, tag notes with discussion id and epoch
   if item.discussions then
+    denil(item.discussions)
     ---@param d snacks.glab.Discussion
     item.discussions = vim.tbl_filter(function(d)
       ---@param note snacks.glab.Note
@@ -154,6 +173,15 @@ function M:update(data, fields)
       end
       return #d.notes > 0
     end, item.discussions)
+  end
+
+  -- pending review comments: sanitize and drop drafts with an empty body
+  if item.draft_notes then
+    denil(item.draft_notes)
+    ---@param d snacks.glab.DraftNote
+    item.draft_notes = vim.tbl_filter(function(d)
+      return type(d.note) == "string" and d.note ~= ""
+    end, item.draft_notes)
   end
 
   -- aggregate award emoji into {content, count} reactions

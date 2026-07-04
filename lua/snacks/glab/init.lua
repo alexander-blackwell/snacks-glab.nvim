@@ -59,6 +59,9 @@ local defaults = {
   },
   ---@type vim.bo|{}
   bo = {},
+  diff = {
+    min = 4, -- context lines shown in diff hunks rendered under positioned comments
+  },
   scratch = {
     height = 15, -- height of scratch window
   },
@@ -149,6 +152,7 @@ Snacks.util.set_hl({
   StatBadge = "Special",
   ResolvedBadge = "DiagnosticOk",
   PositionBadge = "@property",
+  PendingBadge = "DiagnosticWarn",
   MrClean = "DiagnosticInfo",
   MrChecking = "DiagnosticWarn",
   MrDirty = "DiagnosticError",
@@ -187,6 +191,12 @@ end
 ---@param opts? snacks.picker.glab.pipeline.Config
 function M.pipeline(opts)
   return Snacks.picker.glab_pipeline(opts)
+end
+
+--- Create a new issue (Title frontmatter + description in a scratch buffer)
+---@param opts? { repo?: string }
+function M.create_issue(opts)
+  return require("snacks.glab.actions").create_issue(opts)
 end
 
 --- Open an issue or MR in a glab:// buffer.

@@ -69,8 +69,9 @@ tests/smoke.lua + tests/mock/glab   headless test suite against a mock glab bina
 |---|---|
 | PR | MR (`mr` subcommands, `!` hash) |
 | reactions API | award_emoji (aggregate counts client-side; one entry per user+emoji) |
-| reviews / pending review | approvals only (`mr approve`/`revoke`); no draft-note review flow |
-| status checks | `head_pipeline` + pipelines/jobs pickers |
+| reviews / pending review | draft notes API (15.10+, Free tier): `glab_draft_note` / `glab_submit_review` (bulk_publish, optional approve) / `glab_discard_review`. "Request changes" is Premium-gated reviewer state — deliberately not ported |
+| review comment hunks | positioned notes render hunks sliced client-side from `GET .../mr/:iid/diffs` (`diffs` pseudo-field); GitLab notes carry positions, never hunk text |
+| status checks | `head_pipeline` + `checks` pseudo-field (chained fetch: latest MR pipeline -> jobs) rendered as a gh-style per-job breakdown; plus pipelines/jobs pickers |
 | GraphQL for threaded comments | not needed — REST `/discussions` is natively threaded |
 | draft toggle | `glab mr update --draft/--ready` |
 | merge/squash/rebase-merge | merge (glab auto-merge default), `--squash`; rebase = rebase source branch |
@@ -113,13 +114,22 @@ CLI surface was verified against **glab 1.106.0**: `--output json` on list/view,
    reason. Same trap applies to any new placeholder carrying `%`.
 3. **Weak cache in tests.** The api item cache is weak; tests must hold fetched items
    in locals across test blocks or GC nondeterministically drops them.
-4. **format_action alignment.** The actions palette renders a fixed-width icon column
+4. **Draft note body field is `note`, not `body`** (REST quirk). Scratch actions
+   targeting draft endpoints must use `edit = "note"`.
+5. **JSON nulls**: GitLab serializes absent positions as `"position": null` →
+   `vim.NIL`, which is truthy userdata that errors on indexing. `item.lua`'s
+   `denil()` sanitizes discussions and draft_notes; run new list-shaped responses
+   through it too.
+6. **Chained pseudo-fields** (`checks` in `api.view`): when one request depends on
+   another's response, register the inner proc in `procs` BEFORE calling `done()`
+   for the outer one, or the completion accounting finishes early.
+7. **format_action alignment.** The actions palette renders a fixed-width icon column
    (`align(icon or "", 3)`); don't revert to conditional icon rendering or rows
    misalign when an action has no icon.
-5. **`glab api` has no `--repo` flag** — repo goes into the endpoint path
+8. **`glab api` has no `--repo` flag** — repo goes into the endpoint path
    (`projects/<url-encoded>` or the `:id` placeholder resolved from cwd). Subcommands
    (`issue`, `mr`, `ci`) take `--repo`.
-6. **Buffer marker contract.** `vim.b.snacks_glab = { repo, type, iid (number) }` is
+9. **Buffer marker contract.** `vim.b.snacks_glab = { repo, type, iid (number) }` is
    deep-equal-compared by `update_main`/`get_meta` in actions.lua; keep types exact.
    Per-line metadata (`discussion_id`, `note_id`, diff positions) flows through
    highlight entries (`{ "", meta = {...} }`) into `Snacks.picker.highlight.meta(buf)`.
@@ -156,3 +166,8 @@ nvim --headless --clean -c "luafile tests/smoke.lua"
    multi-kind action types; fixed the `%2F` gsub bug it exposed (gotcha #2).
 5. Proxy-wrapper concurrency issues diagnosed and fixed on the consumer side
    (shared lingering proxy + locks); recorded here as the concurrency contract.
+6. gh.md parity audit closed the remaining gaps: `Snacks.glab.open()`, the
+   draft-note review flow (draft/submit/discard + pending section in buffers),
+   inline hunks under positioned comments (client-side slicing from `/diffs`),
+   per-job pipeline breakdown in MR buffers, resolve/unresolve threads, and
+   `Snacks.glab.create_issue()`.

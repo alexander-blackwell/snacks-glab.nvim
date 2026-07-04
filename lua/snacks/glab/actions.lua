@@ -385,6 +385,83 @@ M.actions.glab_reply_to_comment = {
   end,
 }
 
+--- Build position/template/title for a comment on the diff line (or visual
+--- selection) under the cursor. Shared by immediate and draft diff comments.
+---@param item snacks.picker.glab.Item
+---@param ctx snacks.glab.action.ctx
+---@return {position: snacks.glab.Position, title: string, template?: string, on_submit?: fun(body: string): string?}?
+local function diff_comment_ctx(item, ctx)
+  local m, meta, buf = get_meta(item, ctx)
+  if not (meta and buf and m and m.diff) then
+    Snacks.notify.error("No diff hunk found to comment on")
+    return
+  end
+  local diff_refs = item.item.diff_refs
+  if not diff_refs then
+    Snacks.notify.error("MR has no diff refs (try refreshing the MR)")
+    return
+  end
+
+  local ret = {} ---@type table
+  local visual = ctx.picker and ctx.picker.visual or Snacks.picker.util.visual()
+  visual = visual and visual.buf == buf and visual or nil
+  local line = m.diff.line ---@type number
+  local start_line ---@type number?
+  if visual then
+    local from, to = math.min(visual.pos[1], visual.end_pos[1]), math.max(visual.pos[1], visual.end_pos[1])
+    local line_diff = vim.tbl_get(meta, to, "diff") or m.diff --[[@as snacks.diff.Meta]]
+    local start_diff = vim.tbl_get(meta, from, "diff") or m.diff --[[@as snacks.diff.Meta]]
+    if line_diff.file ~= start_diff.file then
+      Snacks.notify.error("Cannot add comment: visual selection spans multiple files")
+      return
+    end
+    local code = {} ---@type string[]
+    for i = from, to do
+      code[#code + 1] = vim.tbl_get(meta, i, "diff", "code") or ""
+    end
+    line, start_line = line_diff.line, start_diff.line
+    local above = math.max((line or 1) - (start_line or line or 1), 0)
+    local ft = vim.filetype.match({ filename = m.diff.file }) or ""
+    -- GitLab multi-line suggestions use the `suggestion:-N+M` fence syntax
+    local code_header = ("```%ssuggestion:-%d+0\n"):format(ft == "" and "" or (ft .. " "), above)
+    ret.template = ("\n%s%s\n```\n"):format(code_header, table.concat(code, "\n"))
+    ret.on_submit = function(body)
+      local s, e = body:find(ret.template, 1, true)
+      if s and e then -- suggestion not edited, so remove it
+        body = body:sub(1, s - 1) .. body:sub(e + 1)
+      end
+      body = body:gsub(vim.pesc(code_header), ("```suggestion:-%d+0\n"):format(above)) -- remove ft from fence
+      return body
+    end
+  end
+  if start_line and start_line ~= line then
+    ret.title = ("Comment on lines %s%d to %s%d"):format(
+      m.diff.side:sub(1, 1):upper(),
+      start_line,
+      m.diff.side:sub(1, 1):upper(),
+      line
+    )
+  else
+    ret.title = ("Comment on line %s%d"):format(m.diff.side:sub(1, 1):upper(), line)
+  end
+  ---@type snacks.glab.Position
+  local position = {
+    position_type = "text",
+    base_sha = diff_refs.base_sha,
+    start_sha = diff_refs.start_sha,
+    head_sha = diff_refs.head_sha,
+    new_path = m.diff.file,
+    old_path = m.diff.file,
+  }
+  if m.diff.side == "left" then
+    position.old_line = line
+  else
+    position.new_line = line
+  end
+  ret.position = position
+  return ret
+end
+
 M.actions.glab_diff_comment = {
   desc = "Add diff comment",
   title = "Comment on diff in {type} {hash}",
@@ -396,77 +473,18 @@ M.actions.glab_diff_comment = {
     return m and m.diff ~= nil or false
   end,
   action = function(item, ctx)
-    local m, meta, buf = get_meta(item, ctx)
-    if not (meta and buf and m and m.diff) then
-      Snacks.notify.error("No diff hunk found to comment on")
+    local dc = diff_comment_ctx(item, ctx)
+    if not dc then
       return
     end
-    local diff_refs = item.item.diff_refs
-    if not diff_refs then
-      Snacks.notify.error("MR has no diff refs (try refreshing the MR)")
-      return
-    end
-
     local action = vim.deepcopy(M.cli_actions.glab_comment)
-    local visual = ctx.picker and ctx.picker.visual or Snacks.picker.util.visual()
-    visual = visual and visual.buf == buf and visual or nil
-    local line = m.diff.line ---@type number
-    local start_line ---@type number?
-    if visual then
-      local from, to = math.min(visual.pos[1], visual.end_pos[1]), math.max(visual.pos[1], visual.end_pos[1])
-      local line_diff = vim.tbl_get(meta, to, "diff") or m.diff --[[@as snacks.diff.Meta]]
-      local start_diff = vim.tbl_get(meta, from, "diff") or m.diff --[[@as snacks.diff.Meta]]
-      if line_diff.file ~= start_diff.file then
-        Snacks.notify.error("Cannot add comment: visual selection spans multiple files")
-        return
-      end
-      local code = {} ---@type string[]
-      for i = from, to do
-        code[#code + 1] = vim.tbl_get(meta, i, "diff", "code") or ""
-      end
-      line, start_line = line_diff.line, start_diff.line
-      local above = math.max((line or 1) - (start_line or line or 1), 0)
-      local ft = vim.filetype.match({ filename = m.diff.file }) or ""
-      -- GitLab multi-line suggestions use the `suggestion:-N+M` fence syntax
-      local code_header = ("```%ssuggestion:-%d+0\n"):format(ft == "" and "" or (ft .. " "), above)
-      action.template = ("\n%s%s\n```\n"):format(code_header, table.concat(code, "\n"))
-      action.on_submit = function(body)
-        local s, e = body:find(action.template, 1, true)
-        if s and e then -- suggestion not edited, so remove it
-          body = body:sub(1, s - 1) .. body:sub(e + 1)
-        end
-        body = body:gsub(vim.pesc(code_header), ("```suggestion:-%d+0\n"):format(above)) -- remove ft from fence
-        return body
-      end
-    end
-    if start_line and start_line ~= line then
-      action.title = ("Comment on lines %s%d to %s%d"):format(
-        m.diff.side:sub(1, 1):upper(),
-        start_line,
-        m.diff.side:sub(1, 1):upper(),
-        line
-      )
-    else
-      action.title = ("Comment on line %s%d"):format(m.diff.side:sub(1, 1):upper(), line)
-    end
-    ---@type snacks.glab.Position
-    local position = {
-      position_type = "text",
-      base_sha = diff_refs.base_sha,
-      start_sha = diff_refs.start_sha,
-      head_sha = diff_refs.head_sha,
-      new_path = m.diff.file,
-      old_path = m.diff.file,
-    }
-    if m.diff.side == "left" then
-      position.old_line = line
-    else
-      position.new_line = line
-    end
+    action.title = dc.title
+    action.template = dc.template
+    action.on_submit = dc.on_submit
     action.api = {
       endpoint = "projects/{project}/merge_requests/{iid}/discussions",
       method = "POST",
-      input = { position = position },
+      input = { position = dc.position },
     }
     M.cli(item, action, ctx)
   end,
@@ -487,6 +505,153 @@ M.actions.glab_comment = {
     M.cli(item, action, ctx)
   end,
 }
+
+--- Add a comment to the pending review (a draft note, invisible until submitted).
+--- Context-aware like glab_comment: cursor on a discussion -> draft reply,
+--- cursor on a diff line -> positioned draft, otherwise a general draft note.
+M.actions.glab_draft_note = {
+  desc = "Add to pending review",
+  title = "Add draft comment to {type} {hash}",
+  priority = 140,
+  icon = " ",
+  type = "mr",
+  action = function(item, ctx)
+    local action = vim.deepcopy(M.cli_actions.glab_comment)
+    action.edit = "note" -- draft notes use `note` as the body field
+    action.title = "Draft comment on {type} {hash}"
+    action.success = "Added draft comment to the pending review of {type} {hash}"
+    ---@type snacks.glab.api.Api
+    local api = {
+      endpoint = "projects/{project}/merge_requests/{iid}/draft_notes",
+      method = "POST",
+    }
+    local m = get_meta(item, ctx)
+    if m and m.discussion_id then
+      api.input = { in_reply_to_discussion_id = m.discussion_id }
+      action.title = "Draft reply on {type} {hash}"
+    elseif m and m.diff then
+      local dc = diff_comment_ctx(item, ctx)
+      if not dc then
+        return
+      end
+      action.title = dc.title .. " (draft)"
+      action.template = dc.template
+      action.on_submit = dc.on_submit
+      api.input = { position = dc.position }
+    end
+    action.api = api
+    M.cli(item, action, ctx)
+  end,
+}
+
+M.actions.glab_submit_review = {
+  desc = "Submit pending review",
+  title = "Submit review for {type} {hash}",
+  priority = 200,
+  icon = " ",
+  type = "mr",
+  enabled = function(item)
+    return #(item.item and item.item.draft_notes or {}) > 0
+  end,
+  action = function(item, ctx)
+    Snacks.picker.select(
+      { "Comment", "Approve" },
+      { title = ("Submit %d pending draft(s) for %s"):format(#(item.item.draft_notes or {}), item.hash) },
+      function(choice, idx)
+        if not choice then
+          return
+        end
+        M.cli(item, {
+          title = "Submit review for {type} {hash}",
+          success = "Submitted review for {type} {hash}",
+          api = {
+            endpoint = "projects/{project}/merge_requests/{iid}/draft_notes/bulk_publish",
+            method = "POST",
+          },
+        }, ctx)
+        if idx == 2 then
+          M.cli(item, {
+            cmd = "approve",
+            success = "Approved {type} {hash}",
+            refresh = false,
+          }, ctx)
+        end
+      end
+    )
+  end,
+}
+
+M.actions.glab_discard_review = {
+  desc = "Discard pending review",
+  title = "Discard pending review of {type} {hash}",
+  icon = " ",
+  type = "mr",
+  enabled = function(item)
+    return #(item.item and item.item.draft_notes or {}) > 0
+  end,
+  action = function(item, ctx)
+    local drafts = item.item.draft_notes or {}
+    Snacks.picker.util.confirm(("Discard %d pending draft(s) of %s?"):format(#drafts, item.hash), function()
+      for i, draft in ipairs(drafts) do
+        M.cli(item, {
+          api = {
+            endpoint = "projects/{project}/merge_requests/{iid}/draft_notes/" .. tostring(draft.id),
+            method = "DELETE",
+            silent = true,
+          },
+          success = i == #drafts and "Discarded pending review of {type} {hash}" or nil,
+          refresh = i == #drafts,
+        }, ctx)
+      end
+    end)
+  end,
+}
+
+---@param item snacks.picker.glab.Item
+---@param id string
+local function find_discussion(item, id)
+  for _, d in ipairs(item.item and item.item.discussions or {}) do
+    if d.id == id then
+      return d
+    end
+  end
+end
+
+---@param resolved boolean
+local function resolve_action(resolved)
+  ---@type snacks.glab.Action
+  return {
+    desc = resolved and "Resolve thread" or "Unresolve thread",
+    title = (resolved and "Resolve" or "Unresolve") .. " thread on {type} {hash}",
+    priority = 145,
+    icon = resolved and " " or " ",
+    type = "mr",
+    enabled = function(item, ctx)
+      local m = get_meta(item, ctx)
+      local d = m and m.discussion_id and find_discussion(item, m.discussion_id)
+      local note = d and d.notes and d.notes[1]
+      return (note and note.resolvable and not not note.resolved == not resolved) or false
+    end,
+    action = function(item, ctx)
+      local m = get_meta(item, ctx)
+      if not (m and m.discussion_id) then
+        Snacks.notify.error("No discussion found under the cursor")
+        return
+      end
+      M.cli(item, {
+        api = {
+          endpoint = "projects/{project}/merge_requests/{iid}/discussions/" .. tostring(m.discussion_id),
+          method = "PUT",
+          params = { resolved = resolved },
+        },
+        success = (resolved and "Resolved" or "Unresolved") .. " thread on {type} {hash}",
+      }, ctx)
+    end,
+  }
+end
+
+M.actions.glab_resolve = resolve_action(true)
+M.actions.glab_unresolve = resolve_action(false)
 
 --- REST collection name for a type
 ---@param type "issue" | "mr"
@@ -733,6 +898,29 @@ function M.clean_trace(text)
   return lines
 end
 
+--- Create a new issue via a scratch buffer (Title frontmatter + description body).
+---@param opts? { repo?: string }
+function M.create_issue(opts)
+  opts = opts or {}
+  ---@type snacks.glab.cli.Action.ctx
+  local cli_ctx = {
+    item = { type = "issue", iid = "", hash = "new issue", repo = opts.repo, title = "", body = "" },
+    args = { "issue", "create", "-y" },
+    opts = {
+      title = "Create issue" .. (opts.repo and (" in " .. opts.repo) or ""),
+      success = "Created issue",
+      icon = config.icons.issue.open,
+      edit = "description",
+      fields = {
+        { arg = "title", prop = "title", name = "Title" },
+      },
+      template = "",
+      repo = opts.repo,
+    },
+  }
+  return M.edit(cli_ctx)
+end
+
 ---@param str string
 ---@param ... table<string, any>
 function M.tpl(str, ...)
@@ -838,7 +1026,7 @@ function M.parse(body, ctx)
 
   for _, field in ipairs(ctx.opts.fields) do
     local value = values[field.name]
-    if value then
+    if value and value ~= "" then
       if ctx.opts.api then
         ctx.opts.api.input = ctx.opts.api.input or {}
         ctx.opts.api.input[field.arg] = value

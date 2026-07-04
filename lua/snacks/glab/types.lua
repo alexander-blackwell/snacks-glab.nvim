@@ -126,6 +126,25 @@
 ---@field individual_note boolean
 ---@field notes snacks.glab.Note[]
 
+--- A pending (unpublished) review comment. Only the author sees these.
+--- NOTE: the body field is `note`, not `body`.
+---@class snacks.glab.DraftNote
+---@field id number
+---@field note string
+---@field author_id number
+---@field discussion_id? string set when the draft replies to a discussion
+---@field resolve_discussion? boolean
+---@field position? snacks.glab.Position
+
+--- One file's diff as returned by `GET .../merge_requests/:iid/diffs`
+---@class snacks.glab.FileDiff
+---@field old_path string
+---@field new_path string
+---@field diff string unified hunks, starting with an `@@` header
+---@field new_file? boolean
+---@field deleted_file? boolean
+---@field renamed_file? boolean
+
 ---@class snacks.glab.DiffRefs
 ---@field base_sha string
 ---@field head_sha string
@@ -165,6 +184,9 @@
 ---@field discussions? snacks.glab.Discussion[]
 ---@field award_emoji? snacks.glab.Award[]
 ---@field approved_by? snacks.glab.User[]
+---@field draft_notes? snacks.glab.DraftNote[] the current user's pending review comments (MR only)
+---@field diffs? snacks.glab.FileDiff[] file diffs used to render hunks under positioned notes (MR only)
+---@field checks_jobs? snacks.glab.Job[] jobs of the latest MR pipeline (MR only)
 
 --- Normalized picker item wrapping a snacks.glab.Item
 ---@class snacks.picker.glab.Item: snacks.picker.Item,snacks.glab.Item

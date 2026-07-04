@@ -13,7 +13,7 @@ local mr_cache = {} ---@type table<string, snacks.picker.glab.Item?>
 --- so we track whole responses instead of individual fields)
 local view_fields = {
   issue = { "detail", "discussions", "awards" },
-  mr = { "detail", "discussions", "awards", "approvals" },
+  mr = { "detail", "discussions", "awards", "approvals", "drafts", "diffs", "checks" },
 }
 
 ---@type table<string, snacks.glab.api.Config|{}>
@@ -347,6 +347,18 @@ function M.view(cb, item, opts)
         }
       end,
     },
+    drafts = {
+      endpoint = M.endpoint(item, "/draft_notes?per_page=100"),
+      transform = function(data)
+        return { draft_notes = data or {} }
+      end,
+    },
+    diffs = {
+      endpoint = M.endpoint(item, "/diffs?per_page=100"),
+      transform = function(data)
+        return { diffs = data or {} }
+      end,
+    },
   }
 
   for _, field in ipairs(todo) do
@@ -359,6 +371,30 @@ function M.view(cb, item, opts)
         endpoint = req.endpoint,
         on_error = function()
           done() -- keep going; partial view is better than none
+        end,
+      })
+    elseif field == "checks" then
+      -- chained fetch: latest MR pipeline -> its jobs
+      procs[#procs + 1] = M.request(function(_, pipelines)
+        local pipeline = pipelines and pipelines[1]
+        if pipeline and pipeline.id then
+          -- register the inner request before completing the outer one,
+          -- so done() accounting stays correct
+          procs[#procs + 1] = M.request(function(_, jobs)
+            it = vim.tbl_extend("force", it, { checks_jobs = jobs or {} })
+            done()
+          end, {
+            endpoint = ("projects/%s/pipelines/%s/jobs?per_page=100"):format(enc(item.repo), tostring(pipeline.id)),
+            on_error = function()
+              done()
+            end,
+          })
+        end
+        done()
+      end, {
+        endpoint = M.endpoint(item, "/pipelines?per_page=1"),
+        on_error = function()
+          done()
         end,
       })
     end

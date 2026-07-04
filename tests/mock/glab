@@ -106,6 +106,41 @@ EOF
   *"/issues/42"*)
     issue_detail
     ;;
+  "issue create"*)
+    echo "https://gitlab.example.com/group/sub/proj/-/issues/43"
+    ;;
+  *"/merge_requests/7/draft_notes/bulk_publish"*)
+    echo '{}'
+    ;;
+  *"/merge_requests/7/draft_notes/8"*)
+    echo '{}'
+    ;;
+  *"/merge_requests/7/draft_notes"*)
+    cat <<'EOF'
+[
+  {"id": 801, "author_id": 7, "merge_request_id": 2001, "discussion_id": null,
+   "note": "Overall direction looks good, see inline drafts.",
+   "position": {"base_sha": null, "start_sha": null, "head_sha": null, "old_path": null,
+                "new_path": null, "position_type": "text", "old_line": null, "new_line": null}},
+  {"id": 802, "author_id": 7, "merge_request_id": 2001, "discussion_id": null,
+   "note": "Use a named constant here.",
+   "position": {"position_type": "text", "base_sha": "base111", "head_sha": "head222", "start_sha": "start333",
+                "new_path": "src/limiter.lua", "old_path": "src/limiter.lua", "new_line": 2, "old_line": null}}
+]
+EOF
+    ;;
+  *"/merge_requests/7/diffs"*)
+    cat <<'EOF'
+[
+  {"old_path": "src/limiter.lua", "new_path": "src/limiter.lua",
+   "new_file": false, "deleted_file": false, "renamed_file": false,
+   "diff": "@@ -1,3 +1,4 @@\n local M = {}\n+M.rate = 100\n return M\n"}
+]
+EOF
+    ;;
+  *"/merge_requests/7/discussions/mrdisc1"*)
+    echo '{"id": "mrdisc1"}'
+    ;;
   *"/merge_requests/7/discussions"*)
     cat <<'EOF'
 [

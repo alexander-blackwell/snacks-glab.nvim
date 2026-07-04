@@ -8,6 +8,7 @@ local U = Snacks.picker.util
 ---@field item snacks.picker.glab.Item
 ---@field opts snacks.glab.Config
 ---@field markdown? boolean render in a markdown buffer (defaults to true)
+---@field diff? boolean render code hunks under positioned comments (defaults to true)
 ---@field annotations? snacks.diff.Annotation[]
 
 ---@param field string
@@ -160,6 +161,32 @@ M.props = {
       local hl = "SnacksGlabCheck" .. U.title(status):gsub("_(%l)", string.upper)
       local ret = {} ---@type snacks.picker.Highlight[]
       H.extend(ret, H.badge(icon .. " " .. status:gsub("_", " "), hl))
+
+      -- per-job breakdown of the latest MR pipeline (gh-style checks)
+      local jobs = item.item.checks_jobs or {}
+      if #jobs > 0 then
+        local stats = {} ---@type table<string, number>
+        for _, job in ipairs(jobs) do
+          stats[job.status] = (stats[job.status] or 0) + 1
+        end
+        local order = { "success", "failed", "running", "pending", "manual", "canceled", "skipped" }
+        for _, s in ipairs(order) do
+          local count = stats[s]
+          if count then
+            ret[#ret + 1] = { " " }
+            local job_icon = opts.icons.pipeline[s] or opts.icons.pipeline.pending
+            local job_hl = "SnacksGlabCheck" .. U.title(s)
+            H.extend(ret, H.badge(job_icon .. " " .. tostring(count), job_hl))
+          end
+        end
+        ret[#ret + 1] = { " " }
+        for _, s in ipairs(order) do
+          local count = stats[s]
+          if count then
+            ret[#ret + 1] = { string.rep(opts.icons.block, count), "SnacksGlabCheck" .. U.title(s) }
+          end
+        end
+      end
       return ret
     end,
   },
@@ -260,6 +287,24 @@ function M.render(buf, item, opts)
       if #lines > c then
         lines[#lines + 1] = {} -- empty line
       end
+    end
+  end
+
+  -- the current user's pending review comments (draft notes)
+  local drafts = item.item.draft_notes or {}
+  if #drafts > 0 then
+    lines[#lines + 1] = { { "" } } -- empty line
+    lines[#lines + 1] = { { "---", "@punctuation.special.markdown" } }
+    lines[#lines + 1] = {} -- empty line
+    local header = {} ---@type snacks.picker.Highlight[]
+    H.extend(header, H.badge(("Pending review · %d draft%s"):format(#drafts, #drafts == 1 and "" or "s"), "SnacksGlabPendingBadge"))
+    header[#header + 1] = { " " }
+    header[#header + 1] = { "not visible to others until submitted", "SnacksPickerDimmed" }
+    lines[#lines + 1] = header
+    lines[#lines + 1] = {} -- empty line
+    for _, draft in ipairs(drafts) do
+      vim.list_extend(lines, M.draft(draft, ctx))
+      lines[#lines + 1] = {} -- empty line
     end
   end
 
@@ -436,6 +481,14 @@ function M.comment(note, ctx, replies)
   ret[#ret + 1] = header
 
   local annotation = M.annotate(note, ctx)
+  if ctx.diff ~= false then
+    -- render the code hunk this comment is anchored to
+    local diff = M.comment_diff(note, ctx)
+    if #diff > 0 then
+      vim.list_extend(ret, diff)
+      ret[#ret + 1] = {} -- empty line between diff and body
+    end
+  end
 
   vim.list_extend(ret, M.comment_body(note, ctx))
   for _, reply in ipairs(replies or {}) do
@@ -452,6 +505,111 @@ function M.comment(note, ctx, replies)
   if annotation then
     annotation.text = vim.deepcopy(ret)
   end
+  return ret
+end
+
+--- Render a pending draft note (body field is `note`)
+---@param draft snacks.glab.DraftNote
+---@param ctx snacks.glab.render.ctx
+function M.draft(draft, ctx)
+  local ret = {} ---@type snacks.picker.Highlight[][]
+  local header = {} ---@type snacks.picker.Highlight[]
+  H.extend(header, H.badge("PENDING", "SnacksGlabPendingBadge"))
+  local pos = draft.position
+  if pos and (pos.new_path or pos.old_path) then
+    local file = pos.new_path or pos.old_path
+    local line = pos.new_line or pos.old_line
+    header[#header + 1] = { " " }
+    H.extend(header, H.badge(ctx.opts.icons.file .. file .. (line and (":" .. line) or ""), "SnacksGlabPositionBadge"))
+  end
+  if draft.discussion_id then
+    header[#header + 1] = { " " }
+    header[#header + 1] = { "reply", "SnacksGlabCommentAction" }
+  end
+  ret[#ret + 1] = header
+
+  local annotation = M.annotate(draft, ctx)
+  if ctx.diff ~= false then
+    local diff = M.comment_diff(draft, ctx)
+    if #diff > 0 then
+      vim.list_extend(ret, diff)
+      ret[#ret + 1] = {}
+    end
+  end
+
+  vim.list_extend(ret, M.comment_body({ body = draft.note }, ctx))
+  for _, line in ipairs(ret) do
+    line[#line + 1] = { "", meta = { draft_id = draft.id } }
+  end
+  ret = M.indent(ret, ctx)
+  if annotation then
+    annotation.text = vim.deepcopy(ret)
+  end
+  return ret
+end
+
+--- Slice the diff hunk a positioned note refers to, gh-style:
+--- the hunk from its start through the commented line, trimmed to
+--- `opts.diff.min` lines and rendered as a fenced diff.
+---@param note snacks.glab.Note|snacks.glab.DraftNote
+---@param ctx snacks.glab.render.ctx
+function M.comment_diff(note, ctx)
+  local pos = note.position
+  if not pos or pos.position_type ~= "text" or not (pos.new_path or pos.old_path) then
+    return {}
+  end
+  local target_new, target_old = pos.new_line, pos.old_line
+  local fd ---@type snacks.glab.FileDiff?
+  for _, d in ipairs(ctx.item.item and ctx.item.item.diffs or {}) do
+    if (pos.new_path and d.new_path == pos.new_path) or (pos.old_path and d.old_path == pos.old_path) then
+      fd = d
+      break
+    end
+  end
+  if not fd or not fd.diff or fd.diff == "" then
+    return {}
+  end
+
+  -- walk the unified diff, collecting the current hunk until the target line
+  local hunk_header ---@type string?
+  local collected = {} ---@type string[]
+  local old_ln, new_ln = 0, 0
+  local found = false
+  for _, line in ipairs(vim.split(fd.diff, "\n", { plain = true })) do
+    local oh, nh = line:match("^@@ %-(%d+),?%d* %+(%d+),?%d* @@")
+    if oh then
+      hunk_header, collected = line, {}
+      old_ln, new_ln = tonumber(oh) - 1, tonumber(nh) - 1
+    elseif hunk_header then
+      local kind = line:sub(1, 1)
+      if kind == "+" then
+        new_ln = new_ln + 1
+      elseif kind == "-" then
+        old_ln = old_ln + 1
+      elseif kind == " " or line == "" then
+        old_ln, new_ln = old_ln + 1, new_ln + 1
+      end
+      collected[#collected + 1] = line
+      if (target_new and kind ~= "-" and new_ln == target_new) or (target_old and kind == "-" and old_ln == target_old) then
+        found = true
+        break
+      end
+    end
+  end
+  if not found or not hunk_header then
+    return {}
+  end
+
+  local count = math.max(ctx.opts.diff and ctx.opts.diff.min or 4, 1)
+  local Diff = require("snacks.picker.util.diff")
+  local path = pos.new_path or pos.old_path
+  local diff = ("diff --git a/%s b/%s\n%s\n%s"):format(path, path, hunk_header, table.concat(collected, "\n"))
+  local ret = Diff.format(diff, {
+    max_hunk_lines = count,
+    hunk_header = false,
+  })
+  table.insert(ret, 1, { { "```" } })
+  table.insert(ret, { { "```" } })
   return ret
 end
 
@@ -481,9 +639,13 @@ function M.annotations(mr)
     item = mr,
     opts = require("snacks.glab").config(),
     markdown = false,
+    diff = false, -- annotations are shown on the diff itself; no embedded hunks
   }
   for _, thread in ipairs(mr.item and mr.item.discussions or {}) do
     M.thread(thread, ctx)
+  end
+  for _, draft in ipairs(mr.item and mr.item.draft_notes or {}) do
+    M.draft(draft, ctx)
   end
   return ctx.annotations or {}
 end

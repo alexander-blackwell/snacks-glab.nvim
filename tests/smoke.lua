@@ -173,6 +173,19 @@ try("mr view fetches approvals and pipeline", function()
   assert(item.item.approved_by and item.item.approved_by[1].username == "asmith", "approvals")
   assert(item.item.head_pipeline and item.item.head_pipeline.status == "running", "pipeline")
   assert(item.item.diff_refs and item.item.diff_refs.base_sha == "base111", "diff refs")
+  assert(#(item.item.draft_notes or {}) == 2, "draft notes: " .. #(item.item.draft_notes or {}))
+  assert(#(item.item.diffs or {}) == 1, "file diffs fetched")
+  assert(#(item.item.checks_jobs or {}) == 3, "checks jobs: " .. #(item.item.checks_jobs or {}))
+  -- json nulls sanitized (doc-style all-null draft position)
+  local function no_nil(t)
+    for _, v in pairs(t) do
+      assert(v ~= vim.NIL, "vim.NIL leaked")
+      if type(v) == "table" then
+        no_nil(v)
+      end
+    end
+  end
+  no_nil(item.item.draft_notes)
   mr_item = item
   return true
 end)
@@ -214,6 +227,14 @@ try("Snacks.glab.open opens the buffer", function()
   assert(wait_for(function()
     return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"):find("rate limiting", 1, true) ~= nil
   end), "timeout waiting for mr render")
+  assert(wait_for(function()
+    return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"):find("Pending review", 1, true) ~= nil
+  end), "timeout waiting for pending review section")
+  local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  assert(text:find("Use a named constant here.", 1, true), "draft note rendered")
+  assert(text:find("Overall direction looks good", 1, true), "plain draft rendered")
+  assert(text:find("M.rate = 100", 1, true), "hunk rendered under positioned comment")
+  assert(text:find("Pipeline:", 1, true), "pipeline prop present")
   return true
 end)
 
@@ -245,15 +266,73 @@ try("mr actions enabled correctly", function()
   return true
 end)
 
+try("mr palette offers review actions", function()
+  local Actions = require("snacks.glab.actions")
+  local actions = Actions.get_actions(mr_item, { items = { mr_item } })
+  assert(actions.glab_draft_note, "draft note action")
+  assert(actions.glab_submit_review, "submit review enabled with pending drafts")
+  assert(actions.glab_discard_review, "discard review enabled with pending drafts")
+  assert(not actions.glab_resolve and not actions.glab_unresolve, "resolve needs cursor context")
+  assert(Actions.actions.glab_resolve and Actions.actions.glab_unresolve, "resolve actions registered")
+  assert(type(Actions.create_issue) == "function", "create_issue exists")
+  assert(type(Snacks.glab.create_issue) == "function", "Snacks.glab.create_issue exists")
+  local issue_actions = Actions.get_actions(issue_item, { items = { issue_item } })
+  assert(not issue_actions.glab_draft_note and not issue_actions.glab_submit_review, "mr-only review actions")
+  return true
+end)
+
+try("comment_diff slices the hunk", function()
+  local Render = require("snacks.glab.render")
+  local ctx = { item = mr_item, opts = require("snacks.glab").config() }
+  local note = mr_item.item.draft_notes[2]
+  assert(note.position and note.position.new_line == 2, "positioned draft")
+  local lines = Render.comment_diff(note, ctx)
+  assert(#lines > 2, "hunk rendered, got " .. #lines)
+  local text = ""
+  for _, l in ipairs(lines) do
+    for _, seg in ipairs(l) do
+      if type(seg[1]) == "string" then
+        text = text .. seg[1]
+      end
+    end
+    text = text .. "\n"
+  end
+  assert(text:find("M.rate = 100", 1, true), "hunk contains the target line:\n" .. text)
+  assert(text:find("```", 1, true), "fenced")
+  return true
+end)
+
+try("pipeline prop renders job breakdown", function()
+  local Render = require("snacks.glab.render")
+  local prop
+  for _, p in ipairs(Render.props) do
+    if p.name == "Pipeline" then
+      prop = p
+    end
+  end
+  local ret = assert(prop).hl(mr_item, require("snacks.glab").config())
+  local text = ""
+  for _, seg in ipairs(ret) do
+    if type(seg[1]) == "string" then
+      text = text .. seg[1]
+    end
+  end
+  assert(text:find("running", 1, true), "pipeline status")
+  assert(text:find("■", 1, true), "job stat blocks")
+  assert(text:find("1", 1, true), "job counts")
+  return true
+end)
+
 -- 9. diff annotations from positioned discussions
 try("mr diff annotations", function()
   local Render = require("snacks.glab.render")
   local item = assert(mr_item, "mr item from view test")
   local annotations = Render.annotations(item)
-  assert(#annotations == 1, "one annotation, got " .. #annotations)
-  local a = annotations[1]
-  assert(a.file == "src/limiter.lua" and a.line == 2 and a.side == "right", vim.inspect(a))
-  assert(#a.text > 0, "annotation text rendered")
+  assert(#annotations == 2, "discussion + pending draft annotations, got " .. #annotations)
+  for _, a in ipairs(annotations) do
+    assert(a.file == "src/limiter.lua" and a.line == 2 and a.side == "right", vim.inspect(a))
+    assert(#a.text > 0, "annotation text rendered")
+  end
   return true
 end)
 

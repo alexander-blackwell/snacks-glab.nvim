@@ -15,6 +15,9 @@ built on the [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli).
   - Close, reopen, edit, and merge MRs (merge, squash, rebase)
   - Add award emoji and labels
   - Approve / revoke approval of MRs
+  - **Review MRs** with pending draft comments: draft, submit (comment or approve), discard
+  - Resolve / unresolve discussion threads
+  - Create issues from a scratch buffer
   - Checkout MR branches locally
   - Mark MRs as draft/ready
   - View MR diffs with syntax highlighting and inline discussion threads
@@ -100,6 +103,9 @@ Snacks.picker.glab_pipeline({ status = "failed", ref = "main" })
 -- Jobs of a pipeline
 Snacks.picker.glab_job({ pipeline = 4567 })
 
+-- Create a new issue (Title frontmatter + description scratch buffer)
+Snacks.glab.create_issue()
+
 -- Open issue/MR in a buffer (repo defaults to the current origin remote)
 Snacks.glab.open({ type = "issue", iid = 42, repo = "group/subgroup/project" })
 vim.cmd.edit("glab://group/subgroup/project/issue/42") -- equivalent
@@ -125,10 +131,17 @@ When viewing an issue or MR in the picker, press `<cr>` to show available action
 - **Merge / Squash** — merge (auto-merge when a pipeline is running) or squash-merge
 - **Rebase** — rebase the source branch onto the target branch
 - **Approve / Revoke** — approve the MR or revoke your approval
+- **Review flow** — *Add to pending review* creates draft comments (general,
+  replies, or on diff lines) that only you can see; *Submit pending review*
+  publishes them all (optionally approving); *Discard pending review* deletes them.
+  Pending drafts render in the MR buffer under a **Pending review** section and
+  as inline annotations in the diff view
+- **Resolve / Unresolve thread** — with the cursor on a discussion
 - **Mark as draft/ready** — toggle draft status
 - **Diff comments** — comment on specific lines, with GitLab
   [suggestions](https://docs.gitlab.com/ee/user/project/merge_requests/reviews/suggestions.html)
-  pre-filled from visual selections
+  pre-filled from visual selections; positioned comments render their code hunk
+  inline in the MR buffer
 
 **Pipelines & Jobs:**
 
@@ -159,6 +172,10 @@ threaded comments.
 | `c`    | Close         | Close the issue/MR             |
 | `o`    | Reopen        | Reopen a closed issue/MR       |
 
+The buffer also renders the current user's **pending review** (draft notes), code
+**hunks under positioned comments** (context lines configurable via `diff.min`), and a
+**per-job breakdown** of the latest pipeline.
+
 ## ⚙️ Config
 
 ```lua
@@ -166,6 +183,9 @@ threaded comments.
 {
   --- the GitLab CLI binary (or a wrapper script)
   cmd = "glab",
+  diff = {
+    min = 4, -- context lines shown in diff hunks rendered under positioned comments
+  },
   --- Keymaps for GitLab buffers
   ---@type table<string, snacks.glab.Keymap|false>?
   keys = {
